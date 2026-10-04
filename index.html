@@ -2,9 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Riso Runner</title>
-<meta name="description" content="An endless run through a risograph print: forest, jungle and desert, printed in three inks.">
+<meta name="description" content="An endless run through a risograph print: forest, autumn, jungle, desert, snow and night.">
+<!-- installable app: manifest, icons, full screen on phones -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f2ede3">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Riso Runner">
+<meta name="format-detection" content="telephone=no">
 <style>
 @font-face{font-family:'Big Shoulders Stencil Display';font-style:normal;font-weight:700 900;font-display:swap;src:url(fonts/big-shoulders-stencil-display-latin.woff2) format('woff2')}
 @font-face{font-family:'Cutive Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/cutive-mono-latin.woff2) format('woff2')}
@@ -14,12 +24,13 @@
   --mono:"Cutive Mono","Courier New",Courier,monospace;
   --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='1' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .15 0 0 0 0 .12 0 0 0 0 .1 1.6 0 0 0 -.95'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
   --m:26px;
+  --sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
 body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--mono)}
 /* the sheet: the print sits inside paper margins, with the printer's marks around it */
-#frame{position:fixed;inset:var(--m) var(--m) calc(var(--m) + 10px) var(--m);touch-action:none;cursor:grab}
+#frame{position:fixed;inset:calc(var(--m) + var(--st)) calc(var(--m) + var(--sr)) calc(var(--m) + 10px + var(--sb)) calc(var(--m) + var(--sl));touch-action:none;cursor:grab}
 #frame:active{cursor:grabbing}
 #c{display:block;width:100%;height:100%}
 .crop{position:absolute;width:14px;height:14px;pointer-events:none}
@@ -52,7 +63,7 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 #lab button,#labBtn{font:900 13px/1 var(--stencil);letter-spacing:.08em;color:var(--paper);background:var(--key);border:0;padding:6px 9px;cursor:pointer}
 #lab .chk{display:flex;gap:6px;align-items:center;margin-top:7px;font-size:11.5px}
 #lab hr{border:0;border-top:1px dashed var(--key);margin:9px 0 2px;opacity:.6}
-#labBtn{position:fixed;top:calc(var(--m) + 12px);right:calc(var(--m) + 12px)}
+#labBtn{display:none}   /* the lab opens with L */
 #lab:not(.hide)~#labBtn{display:none}
 /* HUD: distance printed in the corner of the image, a sheet banner on entering a region */
 #hud{position:absolute;left:14px;top:10px;font:900 30px/1 var(--stencil);letter-spacing:.06em;color:var(--key);mix-blend-mode:multiply;pointer-events:none}
@@ -69,7 +80,7 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 #card .cols{display:flex;gap:22px;align-items:center;text-align:center}#card .cols>div:first-child{min-width:230px}
 #card .pc{display:block;width:250px;max-width:40vw;margin:0 auto 6px;border:1px solid color-mix(in srgb,var(--key) 40%,transparent);box-shadow:2px 3px 0 color-mix(in srgb,var(--key) 25%,transparent)}
 @media (max-width:640px){#card .cols{flex-direction:column;gap:8px}#card .pc{width:220px;max-width:70vw}#card h1{font-size:34px}#card .big{font-size:42px}}
-#card button.save{font:900 13px/1 var(--stencil);letter-spacing:.12em;color:var(--key);background:transparent;border:2px solid var(--key);padding:6px 10px;cursor:pointer;margin-top:6px}
+#card button.save-old{font:900 13px/1 var(--stencil);letter-spacing:.12em;color:var(--key);background:transparent;border:2px solid var(--key);padding:6px 10px;cursor:pointer;margin-top:6px}
 #toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px) rotate(-1.5deg);opacity:0;transition:opacity .5s,transform .5s;pointer-events:none;
   background:var(--paper) var(--grain);border:2px solid var(--key);padding:8px 16px 6px;text-align:center;color:var(--key)}
 #toast.show{opacity:1;transform:translate(-50%,0) rotate(-1.5deg)}
@@ -90,7 +101,15 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 #card .sub{margin:4px 0 10px;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 #card .big{margin:6px 0 0;font:900 56px/1 var(--stencil);letter-spacing:.04em}
 #card .keys{margin:10px 0;font-size:12.5px}#card .keys span{opacity:.75}
-#card .go{margin:12px 0 0;font:900 15px/1 var(--stencil);letter-spacing:.14em;color:var(--paper);background:var(--key);display:inline-block;padding:7px 12px}
+#card button{font:900 14px/1 var(--stencil);letter-spacing:.12em;color:var(--key);background:transparent;border:2px solid var(--key);padding:8px 12px;margin:4px;cursor:pointer}
+#card button.go{color:var(--paper);background:var(--key)}
+#card .btns{margin:12px 0 0}#card .small button{font-size:12px;padding:5px 9px;border-width:1.5px}#card .hint{font-size:11.5px;margin:6px 0 0;opacity:.8}
+#card label.set{display:grid;grid-template-columns:130px 180px;align-items:center;gap:10px;margin:9px 0;text-align:left;font-size:13px}
+#card label.set.chk{grid-template-columns:auto 1fr;gap:8px}#card label.set input[type=range]{accent-color:var(--key)}
+#card label.set select{font:13px var(--mono);color:var(--key);background:transparent;border:1px solid var(--key);padding:3px}
+/* a pause button on the print for touch screens */
+#pauseHud{position:absolute;right:12px;top:10px;width:40px;height:34px;font:900 16px/1 var(--stencil);letter-spacing:.05em;color:var(--key);background:var(--paper);border:2px solid var(--key);cursor:pointer}
+#pauseHud.hide{display:none}
 #card .best{margin:8px 0 0;font-size:12px;letter-spacing:.14em}
 @media (max-width:640px){:root{--m:16px}#slug .hint{display:none}#lab{width:auto;left:calc(var(--m) + 12px)}}
 </style>
@@ -100,7 +119,7 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 <div id="bar"></div>
 <div id="frame">
   <canvas id="c"></canvas>
-  <div id="hud"></div><div id="ink"></div><div id="focus" class="hide"></div><div id="toast"></div><div id="fork"></div><div id="card"></div>
+  <div id="hud"></div><button id="pauseHud" class="hide" aria-label="Pause">II</button><div id="ink"></div><div id="focus" class="hide"></div><div id="toast"></div><div id="fork"></div><div id="card"></div>
   <i class="crop tl"></i><i class="crop tr"></i><i class="crop bl"></i><i class="crop br"></i><i class="reg"></i><i class="reg b"></i>
 </div>
 <div id="slug"><span id="sheet"></span><span class="hint">← → lanes · ↑ jump · hold ↓ duck · p pause · l lab</span><span>RUN <span id="dist">0</span> M</span></div>
@@ -113,5 +132,9 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 <script src="riso.js"></script>
 <script type="importmap">{"imports":{"three":"./lib/three.module.min.js"}}</script>
 <script type="module" src="src/main.js"></script>
+<script>
+// Offline support (installed app). Skipped on localhost while developing, unless ?sw is in the address.
+if('serviceWorker' in navigator&&(location.hostname!=='localhost'||/[?&]sw\b/.test(location.search)))addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));
+</script>
 </body>
 </html>

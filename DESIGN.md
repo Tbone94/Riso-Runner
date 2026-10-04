@@ -40,7 +40,17 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 - **The end of a run** holds a clean-register frame, then the card offers a **postcard**: that frame printed
   on paper with the region in big mid-ink letters, distance, ink, cause, run number and date. Save postcard
   (or S) downloads it, or opens the share sheet on phones.
-- **Daily seed** so everyone can run the same track.
+- **A new course every run** (path shape, obstacles, plants and fork choices follow a seed), and
+  **Today's run**: the date is the seed, so everyone gets the same course that day (it also picks the starting
+  region); it keeps its own best.
+- **Sound** is all generated in code (WebAudio): an ambience bed per region with birds, parrots or crickets,
+  footsteps that change with the ground (snow crunch, boardwalk, sand), and effects for jump, land, duck, lane,
+  pickups (a rising pentatonic run when you string them), focus, crashes, forks and new regions. M mutes.
+- **Settings** (title and pause): field of view, volume, sound off, calm mode (steadier print, no shake),
+  quality (auto drops the print resolution when the frame rate sags). The view widens on portrait screens so
+  all three lanes fit.
+- **Installable app**: manifest, riso-printed icons, full screen, an offline service worker (skipped on
+  localhost unless `?sw`), an Install button where the browser offers one, and an Add to Home Screen hint on iOS.
 - No shop or currency in v1.
 
 ## Pitched, not decided
@@ -104,8 +114,9 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 - **M1** Core run: lanes, jump, slide, obstacles, death and restart. **Done.**
 - **M2** Forks that pick the next region, three new regions, a twist per region, a steeper curve. **Done.**
 - **M3** Ink drops, focus, and the postcard. **Done.** (The roller was built, then removed.)
-- **M4** Difficulty tuning, daily seed, audio, comfort settings (FOV, bob), phone controls.
-- **M5** Ship: build script, new itch page, GitHub Pages.
+- **M4** New course per run, today's run, sound, settings and pause, auto quality, installable app. **Done.**
+  Difficulty is tuned by the autopilot tests only; it needs real play.
+- **M5** Ship: `tools/itch-build.sh` is ready; the itch page waits for the user's approval of the final build.
 
 ## Files
 - `index.html`: the game; L opens the look lab panel.
@@ -114,6 +125,9 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 - `src/main.js`: game states, the runner, input, HUD and cards, the loop, the lab panel.
 - `src/air.js`: leaves, motes and birds.
 - `src/postcard.js`: the end-of-run postcard.
+- `src/audio.js`: procedural sound.
+- `sw.js`, `manifest.webmanifest`, `icons/`: the installable app.
+- `tools/itch-build.sh`: the itch.io zip.
 - `lib/`: three.js r180 (MIT), vendored so it works offline and on itch.
 - `riso.js`: copied from Riso Rider (ink and paper names).
 

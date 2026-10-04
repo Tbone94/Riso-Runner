@@ -25,12 +25,15 @@ function vnoise(x,y,s=0){const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi
   const a=hash2(xi,yi,s),b=hash2(xi+1,yi,s),c=hash2(xi,yi+1,s),d=hash2(xi+1,yi+1,s);return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;}
 function rng(seed){let s=(Math.imul(seed|0,2654435761)>>>0)||1;return()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296;};}
 const smooth=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
+// The course seed: the path's shape, obstacles, plants and fork choices all follow it. A new one every run;
+// the daily run uses the date, so everyone gets the same course that day.
+let SEED=0;
 
 // ---------- the route: which region each leg is ----------
 // Leg 0 is the starting region. Fork k (at the end of leg k) offers two other regions; until the runner
 // picks, the world ahead is built as if they'll take the first.
 export const route={start:0,picks:{},version:0,cache:[],
-  options(k){const r=rng(k*7919+101),cur=this.leg(k),o=[0,1,2,3,4,5].filter(x=>x!==cur),a=o.splice(Math.floor(r()*o.length),1)[0];return[a,o[Math.floor(r()*o.length)]];},
+  options(k){const r=rng(k*7919+101+SEED*31),cur=this.leg(k),o=[0,1,2,3,4,5].filter(x=>x!==cur),a=o.splice(Math.floor(r()*o.length),1)[0];return[a,o[Math.floor(r()*o.length)]];},
   leg(k){if(k<=0)return this.start;if(this.cache[k]===undefined)this.cache[k]=this.options(k-1)[this.picks[k-1]??0];return this.cache[k];},
   choose(k,side){this.picks[k]=side;this.cache=[];this.version++;},
   reset(start){this.start=start;this.picks={};this.cache=[];this.version++;}};
@@ -42,9 +45,9 @@ export const iceAt=s=>regionAt(s).w[4]*smooth(.5,.58,vnoise(s/38,9.3,77));
 
 // ---------- the path: heading and height are smooth sums of sines; x,z are integrated ----------
 export class Path{
-  constructor(){this.x=[0];this.z=[0];this.gapB=new Map();}
-  heading(s){return .16*Math.sin(s/130+.5)+.09*Math.sin(s/53+2.1)+.04*Math.sin(s/23);}
-  height(s){return 7*Math.sin(s/90)+2.4*Math.sin(s/37+.7)+.3*Math.sin(s/15+2);}   // gentle crests: you can always see ~30 m over a rise
+  constructor(ph=0){this.x=[0];this.z=[0];this.gapB=new Map();this.ph=ph;}
+  heading(s){s+=this.ph;return .16*Math.sin(s/130+.5)+.09*Math.sin(s/53+2.1)+.04*Math.sin(s/23);}
+  height(s){s+=this.ph;return 7*Math.sin(s/90)+2.4*Math.sin(s/37+.7)+.3*Math.sin(s/15+2);}   // gentle crests: you can always see ~30 m over a rise
   ensure(s){const X=this.x,Z=this.z;while(X.length-2<s){const i=X.length-1,h=this.heading(i+.5);X.push(X[i]+Math.sin(h));Z.push(Z[i]-Math.cos(h));}}
   // frame at s: position on the centre line, forward (fx,fz) and right (rx,rz) on the ground plane
   at(s,o={}){s=Math.max(0,s);this.ensure(s+2);const i=Math.floor(s),t=s-i,h=this.heading(s);
@@ -80,7 +83,7 @@ export class Path{
 // the path as you near them, desert logs become tumbleweeds rolling across the lanes, jungle rocks become
 // low branches. Moving things move by your distance to them, not by the clock, so they're always fair.
 export class Obstacles{
-  constructor(path){this.P=path;this.B=new Map();this.D=new Map();this.dropId=0;this.next=START+110;this.rnd=rng(4711);}
+  constructor(path){this.P=path;this.B=new Map();this.D=new Map();this.dropId=0;this.next=START+110;this.rnd=rng(4711+SEED*7);}
   // ink drops: {id, s, u, y (height above the path), k (which ink), branch (-1/1 on a fork branch)}
   // pickups sit low on the ground (below your line of sight), in short, well-spaced trails
   dropAt(s,u,y,branch=0){const c=Math.floor(s/CHUNK),id=this.dropId++;if(!this.D.has(c))this.D.set(c,[]);this.D.get(c).push({id,s,u,y,branch,seed:hash2(id,7,3)});}
@@ -318,6 +321,9 @@ export class World{
   // after a fork pick, everything from where the next region starts blending in is rebuilt
   rebuildFrom(s){for(const i of[...this.chunks.keys()])if((i+1)*CHUNK>s)this.drop(i);this.ringBio=null;}
   rebuildAll(){for(const i of[...this.chunks.keys()])this.drop(i);this.ringBio=null;}
+  // a new course: new path shape, obstacles, plants and fork choices
+  reseed(seed){SEED=seed>>>0;this.path=new Path((SEED%997)*13.7);this.obs=new Obstacles(this.path);route.cache=[];route.version++;
+    this.collected.clear();this.flying=[];this.rebuildAll();}
   update(s,cam){
     const i0=Math.max(0,Math.floor((s-BEHIND)/CHUNK)),i1=Math.floor((s+AHEAD)/CHUNK);
     for(const i of[...this.chunks.keys()])if(i<i0||i>i1)this.drop(i);
@@ -405,7 +411,7 @@ export class World{
     // plants and rocks, seeded by chunk so the world is the same every run. Each region places its own
     // things, each kept with the probability that region holds at that spot, so borders mix naturally.
     // Forest-type plants (forest, autumn, snow, night) remember which region they grew in for their colours.
-    const rnd=rng(ci*7919+13),put={};for(const k in this.geo)put[k]=[];
+    const rnd=rng(ci*7919+13+SEED*101),put={};for(const k in this.geo)put[k]=[];
     const side=()=>rnd()<.5?-1:1,keep=(rs,s)=>{const w=P.bio(s);let t=0;for(const r of rs)t+=w[r];return rnd()<t;};
     const pickR=(rs,s)=>{const w=P.bio(s);let t=0;for(const r of rs)t+=w[r];let x=rnd()*t;for(const r of rs)if((x-=w[r])<0)return r;return rs[0];};
     const add=(kind,s,u,h,w=h,sink=.04,tilt=0,r=0)=>{if(P.onPath(s,u,.15))return;const p=this.pos(s,u,F);put[kind].push([p[0],p[1]-sink*h,p[2],h,w,rnd()*Math.PI*2,rnd(),tilt,F.fx,F.fz,r]);};
