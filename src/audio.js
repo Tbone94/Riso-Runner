@@ -1,9 +1,10 @@
 // audio.js — every sound is made in code with WebAudio: a bed of ambience per region, footsteps that
 // change with the ground, and small effects. Nothing loads; the context starts on the first tap or key.
 // Regions: forest, autumn, jungle, desert, snow, night. The music is the one thing that loads (see music()).
-// Mix: effects and ambience (master, lifted 8 dB) and music (mbus) meet in out (volume, mute), then a safety limiter.
-let ctx=null,master=null,out=null,noiseBuf=null,vol=.8,muted=false;
-const SFX=2.5,MUSIC=.7;   // effects lift; the music slider's scale (0.5 on the slider sits under the effects)
+// Mix: effects and ambience (master, their own volume) and music (mbus, its own volume) meet in out (mute), then a
+// safety limiter.
+let ctx=null,master=null,out=null,noiseBuf=null,sfxVol=.8,muted=false;
+const SFX=2.5,MUSIC=.56;   // scales: at the default sliders (effects .8, music .5) the music sits a few dB under the effects
 const beds=[];let birdT=0,stepPhase=0,lastFoot=0;
 
 function noise(){if(noiseBuf)return noiseBuf;const n=ctx.sampleRate*2;noiseBuf=ctx.createBuffer(1,n,ctx.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;return noiseBuf;}
@@ -13,9 +14,9 @@ const env=(g,t,a,peak,d)=>{g.gain.cancelScheduledValues(t);g.gain.setValueAtTime
 export function start(){
   if(ctx){if(ctx.state==='suspended')ctx.resume();return;}
   const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
-  ctx=new AC();out=ctx.createGain();out.gain.value=muted?0:vol;
+  ctx=new AC();out=ctx.createGain();out.gain.value=muted?0:1;
   const lim=ctx.createDynamicsCompressor();lim.threshold.value=-6;lim.knee.value=4;lim.ratio.value=12;lim.attack.value=.003;lim.release.value=.25;
-  out.connect(lim);lim.connect(ctx.destination);master=ctx.createGain();master.gain.value=SFX;master.connect(out);
+  out.connect(lim);lim.connect(ctx.destination);master=ctx.createGain();master.gain.value=SFX*sfxVol;master.connect(out);
   mlp=ctx.createBiquadFilter();mlp.type='lowpass';mlp.frequency.value=20000;mbus=ctx.createGain();mbus.gain.value=0;mbus.connect(mlp);mlp.connect(out);
   fetch('music/music.json').then(r=>r.ok?r.json():null).then(m=>{man=m&&(m.loops||m);msync=!!(m&&m.sync);}).catch(()=>{});
   document.addEventListener('visibilitychange',()=>{document.hidden?ctx.suspend():ctx.resume();});   // no sound from a hidden tab
@@ -24,10 +25,10 @@ export function start(){
   for(const b of BED){const s=src(),f=ctx.createBiquadFilter(),g=ctx.createGain();f.type='bandpass';f.frequency.value=b.f;f.Q.value=b.q;g.gain.value=0;
     s.connect(f);f.connect(g);g.connect(master);s.start(ctx.currentTime+Math.random());beds.push({g,base:b.g,f});}
 }
-export function setVolume(v){vol=v;if(out)out.gain.value=muted?0:vol;}
-export function setMuted(m){muted=m;if(out)out.gain.value=muted?0:vol;}
+export function setSfxVolume(v){sfxVol=v;if(master)master.gain.value=SFX*sfxVol;}   // effects and ambience; 0 is off
+export function setMuted(m){muted=m;if(out)out.gain.value=muted?0:1;}
 export const isMuted=()=>muted;
-export function setMusicVolume(v){musicVol=v;}
+export function setMusicVolume(v){musicVol=v;}   // 0 is off
 
 // ---------- music ----------
 // One loop per region (music/<region>.m4a, listed in music/music.json), crossfading when the region you're in

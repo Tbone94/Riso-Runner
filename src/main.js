@@ -46,7 +46,8 @@ const CONTROLS=[
 ];
 const store0={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}}};
 // The player's settings: field of view, volume, calm mode (less print wobble, no shake) and quality.
-const SET=Object.assign({fov:78,volume:.8,music:.5,muted:false,calm:false,quality:'auto'},store0.get('settings',{}));
+const SET=Object.assign({fov:78,sfx:.8,music:.5,muted:false,calm:false,quality:'auto'},store0.get('settings',{}));
+if('volume' in SET){SET.sfx=SET.volume;delete SET.volume;}   // settings saved before effects and music were split
 const store={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}},set(k,v){try{localStorage.setItem('rr.'+k,JSON.stringify(v));}catch{}}};
 
 // ---------- renderer, scene, camera ----------
@@ -114,7 +115,7 @@ function step(dt){
   if(fk&&R.s>=fk.fs&&!R.branch&&R.s<fk.fs+FORK_LEN){
     if(R.lane===0&&!S.god){R.s=fk.fs-1.4;die('sign');return;}
     R.branch=R.lane||1;route.choose(fk.k,R.branch<0?0:1);world.rebuildFrom(fk.k*LEG+LEG-BLEND);audio.sfx.chime();
-    const info=REGION_INFO[route.leg(fk.k+1)];forkBanner(`<b>${info.name.toUpperCase()} AHEAD</b><span>${info.twist||'easy going'}</span>`,true);}
+    const info=REGION_INFO[route.leg(fk.k+1)];forkBanner(`<span class="on">${info.name} ahead<i>${info.twist||'easy going'}</i></span>`,true);}
   if(R.branch&&!(fk&&R.s<fk.fs+FORK_LEN)){R.lane=R.branch;R.branch=0;}
   const goal=R.branch?R.branch*(LANE+world.path.spread(R.s)):R.lane*LANE;
   R.u+=(goal-R.u)*(1-Math.exp(-(R.branch?20:16-10*iceAt(R.s))*dt));           // on ice, changing lanes is slow and slippery
@@ -134,7 +135,7 @@ function step(dt){
   // the fork banner, while one is coming up
   const nk=Math.floor((R.s-forkAt(0)+200)/LEG),fs=forkAt(nk);
   if(nk>=0&&R.s>fs-190&&R.s<fs){const[a,b]=route.options(nk).map(i=>REGION_INFO[i]);
-    forkBanner(`<b>FORK AHEAD</b><span class="${R.lane<0?'on':''}">◀ ${a.name}${a.twist?' · '+a.twist:''}</span><span class="${R.lane>0?'on':''}">${b.name}${b.twist?' · '+b.twist:''} ▶</span><i>pick a side lane</i>`);}
+    forkBanner(`<span class="${R.lane<0?'on':''}">◀ ${a.name}<i>${a.twist||'easy going'}</i></span><em>FORK</em><span class="${R.lane>0?'on':''}">${b.name} ▶<i>${b.twist||'easy going'}</i></span>`);}
   else if(!(fk&&R.s<fk.fs+40))forkBanner('');
 }
 
@@ -156,9 +157,9 @@ function showCard(kind,m,how,wasBest){prevCard=kind==='settings'?prevCard:kind;c
   else if(kind==='pause')card.innerHTML=`<h1>PAUSED</h1><p class="btns"><button class="go" data-a="resume">RESUME</button><button data-a="settings">SETTINGS</button><button data-a="quit">QUIT</button></p>`;
   else if(kind==='settings')card.innerHTML=`<h1>SETTINGS</h1>
       <label class="set"><span>Field of view</span><input type="range" min="60" max="100" step="1" value="${SET.fov}" data-k="fov"></label>
-      <label class="set"><span>Volume</span><input type="range" min="0" max="1" step=".05" value="${SET.volume}" data-k="volume"></label>
-      <label class="set"><span>Music</span><input type="range" min="0" max="1" step=".05" value="${SET.music}" data-k="music"></label>
-      <label class="set chk"><input type="checkbox" data-k="muted"${SET.muted?' checked':''}><span>Sound off (M)</span></label>
+      <label class="set"><span>${level('Sound effects',SET.sfx)}</span><input type="range" min="0" max="1" step=".05" value="${SET.sfx}" data-k="sfx"></label>
+      <label class="set"><span>${level('Music',SET.music)}</span><input type="range" min="0" max="1" step=".05" value="${SET.music}" data-k="music"></label>
+      <label class="set chk"><input type="checkbox" data-k="muted"${SET.muted?' checked':''}><span>All sound off (M)</span></label>
       <label class="set chk"><input type="checkbox" data-k="calm"${SET.calm?' checked':''}><span>Calm mode: steadier print, no shake</span></label>
       <label class="set"><span>Quality</span><select data-k="quality">${['auto','high','low'].map(q=>`<option${q===SET.quality?' selected':''}>${q}</option>`).join('')}</select></label>
       <p class="btns"><button class="go" data-a="back">DONE</button></p>`;
@@ -172,9 +173,11 @@ function showCard(kind,m,how,wasBest){prevCard=kind==='settings'?prevCard:kind;c
       card.querySelector('.pc').src=card_pc.toDataURL('image/jpeg',.85);}}
   card.classList.add('show');}
 function saveSettings(){store.set('settings',SET);}
-function applySettings(){S.fov=SET.fov;fitFov();audio.setVolume(SET.volume);audio.setMusicVolume(SET.music);audio.setMuted(SET.muted);
+const level=(name,v)=>v>0?name:name+' · off';   // a volume slider all the way down reads as off
+function applySettings(){S.fov=SET.fov;fitFov();audio.setSfxVolume(SET.sfx);audio.setMusicVolume(SET.music);audio.setMuted(SET.muted);
   if(SET.quality!=='auto'){S.scale=SET.quality==='low'?.55:.9;resize();}}
-card.addEventListener('input',e=>{const k=e.target.dataset.k;if(!k)return;SET[k]=e.target.type==='checkbox'?e.target.checked:e.target.type==='range'?+e.target.value:e.target.value;applySettings();saveSettings();});
+card.addEventListener('input',e=>{const k=e.target.dataset.k;if(!k)return;SET[k]=e.target.type==='checkbox'?e.target.checked:e.target.type==='range'?+e.target.value:e.target.value;applySettings();saveSettings();
+  if(k==='sfx'||k==='music')e.target.previousElementSibling.textContent=level(k==='sfx'?'Sound effects':'Music',SET[k]);});
 function act(a){audio.start();
   if(a==='run')begin('endless');else if(a==='daily')begin('daily');else if(a==='again')begin(mode);
   else if(a==='settings')showCard('settings');else if(a==='back')showCard(prevCard==='settings'?'title':prevCard);
@@ -270,6 +273,8 @@ card.addEventListener('pointerup',e=>{const b=e.target.closest('button');if(b){e
 document.getElementById('pauseHud').addEventListener('pointerdown',e=>{e.stopPropagation();audio.start();togglePause();});
 const focusEl=document.getElementById('focus'),inkEl=document.getElementById('ink');
 focusEl.addEventListener('pointerdown',e=>{e.stopPropagation();focus();});
+const focusBtn=document.getElementById('focusBtn');   // touch screens: the big thumb button, while focus is ready
+focusBtn.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();focus();});
 
 // ---------- loop ----------
 applyInks();applySun();resize();applySettings();showCard('title');
@@ -316,6 +321,7 @@ function frame(now){
   {const k=regionAt(R.s).r;inkEl.textContent=state==='title'?'':named(got[k],k).toUpperCase();}
   focusEl.style.setProperty('--fill',(focusT>0?focusT/FOCUS_T:meter)*100+'%');focusEl.classList.toggle('ready',meter>=1&&focusT<=0);focusEl.classList.toggle('on',focusT>0);
   focusEl.classList.toggle('hide',state==='title');
+  focusBtn.classList.toggle('show',state==='run'&&!paused&&meter>=1&&focusT<=0);
   audio.update(dt,w,state==='run'&&!paused?R.v:0,!R.air,state==='run'&&!paused);
   {const rg=regionAt(R.s);audio.music(rg.r,route.leg(rg.leg+1),paused?.35:state==='run'?1:.75,focusT>0);}
   document.getElementById('pauseHud').classList.toggle('hide',state!=='run');

@@ -50,9 +50,14 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
   region changes; quieter on the menu and when paused, muffled during focus. Its own Music slider. The effects were
   lifted 8 dB to sit above it, with a safety limiter on the output. Next (owner's idea): one theme with a version per
   region, Mario-style, played in step so only the band changes at a border.
-- **Settings** (title and pause): field of view, volume, sound off, calm mode (steadier print, no shake),
+- **Settings** (title and pause): field of view, sound effects and music volumes (all the way down = off; split
+  2026-10-04 at the user's request), all sound off, calm mode (steadier print, no shake),
   quality (auto drops the print resolution when the frame rate sags). The view widens on portrait screens so
   all three lanes fit.
+- **Fork banner** (user, 2026-10-04): a slim strip with both choices and their twists, top centre on desktop and just
+  under the HUD on phones, so it never covers the focus bar.
+- **Focus on touch screens** (user, 2026-10-04): a big round FOCUS button under the right thumb, shown only while focus
+  is ready (the top bar still works too).
 - **Phones fill the screen** (user, 2026-10-04): on touch screens and narrow windows the print runs edge to edge (no
   paper margins, crop marks, title or slug, no ragged plate edge); the HUD keeps clear of notches. Desktop keeps the sheet.
 - **Obstacles stand off the background** (user, 2026-10-04): a thicker dark outline plus a band of bare paper just

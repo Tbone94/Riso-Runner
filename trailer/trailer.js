@@ -19,7 +19,7 @@ const $=s=>document.querySelector(s),clamp=(v,a,b)=>v<a?a:v>b?b:v,ease=k=>1-Math
 // ---------- the stage: the game's canvas at 1920×1080, nothing else on screen ----------
 const css=document.createElement('style');
 css.textContent=`#frame{position:fixed!important;left:0!important;top:0!important;width:${FW}px!important;height:${FH}px!important;inset:auto!important}
-  #title,#bar,#slug,#hud,#ink,#focus,#toast,#fork,#card,#pauseHud,#lab,#labBtn,.crop,.reg{display:none!important}
+  #title,#bar,#slug,#hud,#ink,#focus,#focusBtn,#toast,#fork,#card,#pauseHud,#lab,#labBtn,.crop,.reg{display:none!important}
   #tp{position:fixed;left:12px;top:12px;z-index:9;background:#f2ede3;border:2px solid #3d5588;padding:10px;font:13px ${MONO};color:#3d5588;width:500px}
   #tp canvas{width:480px;height:270px;display:block;margin-bottom:8px;background:#fff}
   #tp button{font:900 13px ${STENCIL};letter-spacing:.12em;border:2px solid currentColor;background:none;color:inherit;padding:6px 10px;margin:0 6px 6px 0;cursor:pointer}`;
