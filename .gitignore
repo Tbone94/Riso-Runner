@@ -1,2 +1,4 @@
 .DS_Store
 promo/
+tools/music/.venv/
+tools/music/out/
