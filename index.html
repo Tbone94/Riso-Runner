@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Riso Runner — look lab</title>
-<meta name="description" content="Run through a risograph print. M0 look lab.">
+<title>Riso Runner</title>
+<meta name="description" content="An endless run through a risograph print: forest, jungle and desert, printed in three inks.">
 <style>
 @font-face{font-family:'Big Shoulders Stencil Display';font-style:normal;font-weight:700 900;font-display:swap;src:url(fonts/big-shoulders-stencil-display-latin.woff2) format('woff2')}
 @font-face{font-family:'Cutive Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/cutive-mono-latin.woff2) format('woff2')}
@@ -54,6 +54,22 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 #lab hr{border:0;border-top:1px dashed var(--key);margin:9px 0 2px;opacity:.6}
 #labBtn{position:fixed;top:calc(var(--m) + 12px);right:calc(var(--m) + 12px)}
 #lab:not(.hide)~#labBtn{display:none}
+/* HUD: distance printed in the corner of the image, a sheet banner on entering a region */
+#hud{position:absolute;left:14px;top:10px;font:900 30px/1 var(--stencil);letter-spacing:.06em;color:var(--key);mix-blend-mode:multiply;pointer-events:none}
+#toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px) rotate(-1.5deg);opacity:0;transition:opacity .5s,transform .5s;pointer-events:none;
+  background:var(--paper) var(--grain);border:2px solid var(--key);padding:8px 16px 6px;text-align:center;color:var(--key)}
+#toast.show{opacity:1;transform:translate(-50%,0) rotate(-1.5deg)}
+#toast b{display:block;font:900 26px/1 var(--stencil);letter-spacing:.1em}#toast span{font-size:12px;letter-spacing:.3em;text-transform:uppercase}
+/* cards: the title and the misprint, a job ticket laid on the print */
+#card{position:absolute;left:50%;top:50%;transform:translate(-50%,-46%) rotate(1deg);opacity:0;pointer-events:none;transition:opacity .35s,transform .35s;
+  background:var(--paper) var(--grain);border:2px solid var(--key);padding:18px 26px 16px;text-align:center;color:var(--key);min-width:260px;box-shadow:4px 4px 0 color-mix(in srgb,var(--key) 40%,transparent)}
+#card.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) rotate(-.6deg);cursor:pointer}
+#card h1{margin:0;font:900 44px/1 var(--stencil);letter-spacing:.08em}
+#card .sub{margin:4px 0 10px;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+#card .big{margin:6px 0 0;font:900 56px/1 var(--stencil);letter-spacing:.04em}
+#card .keys{margin:10px 0;font-size:12.5px}#card .keys span{opacity:.75}
+#card .go{margin:12px 0 0;font:900 15px/1 var(--stencil);letter-spacing:.14em;color:var(--paper);background:var(--key);display:inline-block;padding:7px 12px}
+#card .best{margin:8px 0 0;font-size:12px;letter-spacing:.14em}
 @media (max-width:640px){:root{--m:16px}#slug .hint{display:none}#lab{width:auto;left:calc(var(--m) + 12px)}}
 </style>
 </head>
@@ -62,10 +78,11 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 <div id="bar"></div>
 <div id="frame">
   <canvas id="c"></canvas>
+  <div id="hud"></div><div id="toast"></div><div id="card"></div>
   <i class="crop tl"></i><i class="crop tr"></i><i class="crop bl"></i><i class="crop br"></i><i class="reg"></i><i class="reg b"></i>
 </div>
-<div id="slug"><span id="sheet"></span><span class="hint">drag to look · space pause · c clean proof</span><span>RUN 0001 · <span id="dist">0000</span> M</span></div>
-<aside id="lab">
+<div id="slug"><span id="sheet"></span><span class="hint">← → lanes · ↑ jump · ↓ slide · p pause · l lab</span><span>RUN 0001 · <span id="dist">0000</span> M</span></div>
+<aside id="lab" class="hide">
   <h2>LOOK LAB <span id="fps"></span></h2>
   <div id="controls"></div>
   <div class="row"><button id="pause">PAUSE</button><button id="proof">CLEAN PROOF</button><button id="hideLab">HIDE</button></div>

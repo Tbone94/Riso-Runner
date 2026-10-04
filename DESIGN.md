@@ -27,6 +27,26 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 Downhill momentum and launches, speed as health, drawing ink bridges at speed (the Riso Rider link),
 plate shift (run through obstacles of one ink), set pieces (paper glider, rope zipline, the roller ride).
 
+## The run (M1, built 2026-10-03)
+- 3 lanes 2.2 m apart with a quick glide; jump (apex ~1.5 m, ~0.7 s), slide (0.75 s), and down in the
+  air drops you fast into a slide. Inputs buffer ~0.15 s. Keys: arrows/WASD/space; phones: swipe, tap = jump.
+- Speed 9 → 20 m/s over the first few km. Obstacles are one endless seeded sequence (same every run):
+  log (jump), branch (slide), rock1 / rock2 (change lane; rock2 always leaves one lane open), gap (jump),
+  and later a rock2 followed by a log or branch through the open lane. Spacing is never under ~1.2 s.
+- Each obstacle is dressed for its region: logs / mossy logs / sandstone ledges; fallen trees (with vines in
+  the jungle) / stone arches; boulders / mossy boulders / saguaros and striped boulders; streams / chasms.
+- Crash: a clean-proof frame, a shake, then the MISPRINT card (distance, cause, best). Best and run number
+  persist in localStorage. A SHEET banner announces each new region.
+- Checked with a headless autopilot: it clears 10+ km at top speed; doing nothing, only jumping or only
+  sliding all crash at the first obstacle.
+
+### Obstacles must read, without shouting
+- Obstacles print as **flat solid ink** (no hatching, little grain) while all scenery is hatched and grainy.
+- They fog far less than scenery, carry a heavier hand-cut outline, and a sunlit top in the light ink.
+- A shadow pools on the path under each one (for a branch, the dark band says "something overhead").
+- Gaps have snapped rope-bridge posts (cairns in the desert) at both edges, tall enough to see over a rise.
+- Path crests are gentle enough to always see ~30 m ahead.
+
 ## Difficulty
 Speed ramps slowly to a cap. Chunks carry difficulty scores and come from a band that widens over time.
 Every obstacle is readable at least ~1 s ahead (fog distance scales with speed). Never stack a turn
@@ -51,20 +71,25 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 6. The grain is fixed to the screen. You are looking through the paper. "Reprint" re-seeds it at 12 fps.
 7. Light shafts are a print-pass effect: march toward the sun through the depth buffer; open sky bleaches
    the mid and key plates and lays down light ink.
+8. Polish (2026-10-03): a tone curve pushes ink toward clean paper and solid shapes ("bold shapes"); the
+   key plate prints as a wavering hand-cut line screen (hatching) instead of grain; the ink stops raggedly
+   short of the image edge like a real plate; the air is alive (tumbling leaves, paper-white fluff and
+   pollen, desert dust, a flock of birds).
 
 ## Milestones
 - **M0 Look lab:** the rolling path through all three regions, the full print pass, a slow run, sliders. The vibe test.
-- **M1** Core run: lanes, jump, slide, obstacles, death and restart.
-- **M2** Turns, region milestones on the HUD, and forks (if we keep them).
+- **M1** Core run: lanes, jump, slide, obstacles, death and restart. **Done.**
+- **M2** Turns and forks (kept, decided 2026-10-03): choose a branch; region milestones already show.
 - **M3** The drum and stumbling, ink drops, the power, score and the postcard.
 - **M4** Difficulty tuning, daily seed, audio, comfort settings (FOV, bob), phone controls.
 - **M5** Ship: build script, new itch page, GitHub Pages.
 
 ## Files
-- `index.html`: currently the M0 look lab.
+- `index.html`: the game; L opens the look lab panel.
 - `src/print.js`: ink material, sky, blue noise and the print pass.
 - `src/world.js`: the path, regions, terrain chunks, plants and the far skylines.
-- `src/main.js`: boot, the loop, the lab panel.
+- `src/main.js`: game states, the runner, input, HUD and cards, the loop, the lab panel.
+- `src/air.js`: leaves, motes and birds.
 - `lib/`: three.js r180 (MIT), vendored so it works offline and on itch.
 - `riso.js`: copied from Riso Rider (ink and paper names).
 

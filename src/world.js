@@ -10,6 +10,10 @@ import {ID} from './print.js';
 export const LANE=2.2,PATH_HW=3.4,CHUNK=40;
 export const REGIONS=['forest','jungle','desert'],LEG=1500,BLEND=400;
 const AHEAD=340,BEHIND=50;
+export const START=60;
+// Speed climbs from 9 m/s toward 20 over the first few km; difficulty rises over 3.5 km.
+export const speedAt=s=>9+11*(1-Math.exp(-Math.max(0,s-START)/2500));
+const diffAt=s=>Math.min(1,Math.max(0,(s-200)/3500));
 
 // ---------- noise ----------
 function hash2(x,y,s){let h=(Math.imul(x|0,374761393)+Math.imul(y|0,668265263)+Math.imul(s|0,982451653))|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296;}
@@ -24,9 +28,9 @@ export function regionAt(s){s=Math.max(0,s);const k=Math.floor(s/LEG),b=smooth(L
 
 // ---------- the path: heading and height are smooth sums of sines; x,z are integrated ----------
 export class Path{
-  constructor(){this.x=[0];this.z=[0];}
+  constructor(){this.x=[0];this.z=[0];this.gapB=new Map();}
   heading(s){return .16*Math.sin(s/130+.5)+.09*Math.sin(s/53+2.1)+.04*Math.sin(s/23);}
-  height(s){return 7*Math.sin(s/90)+3*Math.sin(s/37+.7)+.8*Math.sin(s/15+2);}
+  height(s){return 7*Math.sin(s/90)+2.4*Math.sin(s/37+.7)+.3*Math.sin(s/15+2);}   // gentle crests: you can always see ~30 m over a rise
   ensure(s){const X=this.x,Z=this.z;while(X.length-2<s){const i=X.length-1,h=this.heading(i+.5);X.push(X[i]+Math.sin(h));Z.push(Z[i]-Math.cos(h));}}
   // frame at s: position on the centre line, forward (fx,fz) and right (rx,rz) on the ground plane
   at(s,o={}){s=Math.max(0,s);this.ensure(s+2);const i=Math.floor(s),t=s-i,h=this.heading(s);
@@ -40,7 +44,39 @@ export class Path{
     const bank=(24*f+10*j+6*d)*(1-.8*this.open(s));
     const ridge=(.5+.9*vnoise(s*.005,side*5.3,7))*bank*(1-Math.exp(-rise/38));
     const bumps=(vnoise(s*.03,u*.03,3)-.5)*(7-4*d)*smooth(4.2,18,a);
-    return this.height(s)+ridge+bumps;}
+    return this.height(s)+ridge+bumps-3.2*this.gapDip(s)*(1-smooth(5,13,a));}
+  // how deep we are into a gap's ravine (0 outside, 1 inside), for the ground and the water
+  gapDip(s){const B=this.gapB.get(Math.floor(s/CHUNK));if(!B)return 0;let w=0;
+    for(const g of B){const a=g.s,b=g.s+g.len;w=Math.max(w,smooth(a-2.5,a-.4,s)*(1-smooth(b+.4,b+2.5,s)));}return w;}
+}
+
+// ---------- obstacles ----------
+// One endless, seeded sequence (the same every run). Spacing never drops below ~1.2 s of running,
+// so every obstacle can be read and answered; harder patterns unlock with distance.
+//   log    across every lane, jump it          branch  across every lane, slide under it
+//   rock1  blocks one lane                     rock2   blocks two lanes, one stays open
+//   gap    a stream or chasm across the path, jump it
+export class Obstacles{
+  constructor(path){this.P=path;this.B=new Map();this.next=START+110;this.rnd=rng(4711);}
+  put(o,a,b){for(let k=Math.floor(a/CHUNK);k<=Math.floor(b/CHUNK);k++){if(!this.B.has(k))this.B.set(k,[]);this.B.get(k).push(o);}}
+  ensure(s){const r=this.rnd;while(this.next<s){const at=this.next,d=diffAt(at),v=speedAt(at);
+      const W={log:1,branch:d>.03?.8:0,rock1:1.1,rock2:d>.12?.8:0,gap:d>.06?.5+.3*d:0};
+      let tot=0;for(const k in W)tot+=W[k];let x=r()*tot,kind='log';for(const k in W)if((x-=W[k])<0){kind=k;break;}
+      const o=this.make(kind,at,r);let end=o.s+o.len;
+      // later on, a follow-up through the open lane, once there's been time to read the first
+      if(kind==='rock2'&&d>.35&&r()<.5){const f=this.make(r()<.5?'log':'branch',end+v*.8,r);end=f.s+f.len;}
+      this.next=end+Math.max(v*1.2,(34-19*d)*(.85+.4*r()));}}
+  make(kind,s,r){const o={kind,s,seed:r(),mask:[1,1,1]};
+    if(kind==='log'){o.len=.9;o.h1=.8;}
+    else if(kind==='branch'){o.len=.7;o.h0=1.15;}
+    else if(kind==='rock1'){const l=Math.floor(r()*3);o.mask=[0,0,0];o.mask[l]=1;o.len=1.4;o.h1=1.7;}
+    else if(kind==='rock2'){o.mask[Math.floor(r()*3)]=0;o.len=1.4;o.h1=1.7;}
+    else{o.s=Math.round(s);o.len=Math.round(3+1.5*diffAt(s));
+      for(let k=Math.floor((o.s-3)/CHUNK);k<=Math.floor((o.s+o.len+3)/CHUNK);k++){if(!this.P.gapB.has(k))this.P.gapB.set(k,[]);this.P.gapB.get(k).push(o);}}
+    this.put(o,o.s-3,o.s+o.len+3);return o;}
+  near(s){return this.B.get(Math.floor(s/CHUNK))||[];}
+  between(a,b){const out=new Set();for(let k=Math.floor(a/CHUNK);k<=Math.floor(b/CHUNK);k++)for(const o of this.B.get(k)||[])if(o.s>=a&&o.s<b)out.add(o);return[...out];}
+
 }
 
 // ---------- cut-paper geometry (all built about 1 unit tall) ----------
@@ -121,6 +157,31 @@ function butteGeo(){const g=new THREE.CylinderGeometry(.42,.5,1,10,1),p=g.attrib
   for(let i=0;i<p.count;i++){const x=p.getX(i),z=p.getZ(i),r=Math.hypot(x,z);if(r<1e-4)continue;const a=Math.atan2(z,x),k=.7+.6*hash2(Math.round((a+Math.PI)/(Math.PI*2)*10)%10,3,5);p.setX(i,x*k);p.setZ(i,z*k);}
   g.translate(0,.5,0);return part(g,ID.STRATA);}
 
+// ---------- obstacle pieces (built in path space: x across the path, y up, z back along it) ----------
+const box=(w,h,d,x,y,z,id)=>part(at(new THREE.BoxGeometry(w,h,d),x,y,z),id);
+function logGeo(trunk,leaf){const g=new THREE.CylinderGeometry(.42,.46,7.8,10,1);g.rotateZ(Math.PI/2);g.translate(0,.42,0);
+  const st=new THREE.CylinderGeometry(.07,.1,.8,6);st.rotateZ(-.7);st.translate(1.7,.95,0);
+  return merge([part(g,trunk),part(st,trunk),blob(.5,-2.6,.8,.1,.6,0,leaf),blob(.4,2.9,.7,-.1,.6,1,leaf)]);}
+function ledgeGeo(){return merge([box(7.8,.62,.9,0,.31,0,ID.STRATA),box(8.3,.2,1.15,0,.72,0,ID.STRATA)]);}
+// A fallen tree resting across the banks, high enough to slide under (its underside is 1.2 m up).
+function branchGeo(trunk,leaf,vines){const g=new THREE.CylinderGeometry(.3,.36,12,9,1);g.rotateZ(Math.PI/2-.04);g.translate(0,1.52,0);
+  const P=[part(g,trunk),blob(.8,-1.3,1.95,0,.55,0,leaf),blob(.7,1.6,1.9,.1,.55,1,leaf),blob(.9,-3.9,1.9,-.1,.6,2,leaf),blob(.8,4.2,1.85,0,.6,3,leaf)];
+  if(vines)for(const[x,y0,y1]of[[-4.2,1.5,.2],[-3.7,1.5,.6],[3.8,1.5,.3],[4.4,1.5,.1],[-1.8,1.45,1.28],[.6,1.45,1.3],[2.4,1.45,1.27]]){
+    const v=vineGeo();v.scale(.35,y0-y1,.35);v.translate(x,y1,0);P.push(v);}
+  return merge(P);}
+function archGeo(){return merge([box(9.8,.95,1.1,0,1.65,0,ID.STRATA),box(1.4,1.2,1.1,-4.6,.6,0,ID.STRATA),box(1.4,1.2,1.1,4.6,.6,0,ID.STRATA),
+  part(at(new THREE.DodecahedronGeometry(.4,0),-5.6,.2,.4),ID.STRATA)]);}
+function boulderGeo(id){return merge([part(at(new THREE.DodecahedronGeometry(.85,0),0,.8,0,1.05,1.05,.95),id),part(at(new THREE.DodecahedronGeometry(.32,0),.75,.22,.45),id)]);}
+function saguaroGeo(){const g=cactusGeo();g.scale(2.6,3.3,2.6);return g;}
+// A cylinder from a to b (for posts and ropes).
+function stick(a,b,r,id){const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),d=B.clone().sub(A),g=new THREE.CylinderGeometry(r,r,d.length(),5);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize()));g.translate((A.x+B.x)/2,(A.y+B.y)/2,(A.z+B.z)/2);return part(g,id);}
+// Gap markers, tall enough to show over a rise: the posts of a rope bridge whose ropes have snapped and
+// hang into the gap (forest, jungle), or stone cairns (desert). Built for the near edge; the far edge is
+// the same turned round.
+function bridgeGeo(trunk){const P=[];for(const x of[-3.8,3.8]){P.push(stick([x,0,0],[x,2,0],.1,trunk),stick([x,1.75,0],[x*.97,.9,-.6],.035,trunk),stick([x*.97,.9,-.6],[x*.95,-.3,-.9],.035,trunk));}return merge(P);}
+function cairnGeo(){const P=[];for(const x of[-3.8,3.8])P.push(part(at(new THREE.DodecahedronGeometry(.45,0),x,.35,0,1,.8,1),ID.STRATA),part(at(new THREE.DodecahedronGeometry(.34,0),x,.95,0,1,.8,1,1),ID.STRATA),part(at(new THREE.DodecahedronGeometry(.24,0),x,1.42,0,1,.9,1,2),ID.STRATA));return merge(P);}
+
 // ---------- far plates: two rings of mountains that travel with the camera ----------
 // Each region has its own skyline; the rings morph between them as the regions blend.
 const N_RING=240,wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
@@ -140,11 +201,14 @@ function ringGeo(r,snow,id){const pos=[],uv=[],idx=[];
 
 // ---------- the world ----------
 export class World{
-  constructor(scene,mat){
-    this.scene=scene;this.mat=mat;this.path=new Path();this.chunks=new Map();
+  constructor(scene,mat,omat=mat){
+    this.scene=scene;this.mat=mat;this.omat=omat;this.path=new Path();this.chunks=new Map();
     this.geo={pine:pineGeo(),broad:broadleafGeo(),birch:birchGeo(),bush:bushGeo(),rock:rockGeo(),grass:grassGeo(),
       tall:tallGeo(),palm:palmGeo(),fan:fanGeo(),banana:bananaGeo(),fern:fernGeo(),vine:vineGeo(),
       jbush:bushGeo(ID.FROND),cactus:cactusGeo(),butte:butteGeo(),srock:rockGeo(ID.STRATA),shrub:bushGeo(ID.SHRUB),dgrass:grassGeo(ID.DRYGRASS)};
+    this.obs=new Obstacles(this.path);
+    this.og={log:[logGeo(ID.TRUNK,ID.LEAF),logGeo(ID.MOSS,ID.FROND),ledgeGeo()],branch:[branchGeo(ID.TRUNK,ID.LEAF,false),branchGeo(ID.MOSS,ID.FROND,true),archGeo()],
+      rock:[boulderGeo(ID.ROCK),boulderGeo(ID.MOSS),boulderGeo(ID.STRATA)],saguaro:saguaroGeo(),gap:[bridgeGeo(ID.TRUNK),bridgeGeo(ID.MOSS),cairnGeo()]};
     this.rings=new THREE.Group();this.ringBio=null;
     this.far=new THREE.Mesh(ringGeo(1500,400,ID.MOUNTAIN),mat);this.near=new THREE.Mesh(ringGeo(900,99999,ID.RIDGE),mat);
     this.skyline={far:SKYLINE.far.map(f=>Float32Array.from({length:N_RING+1},(_,i)=>f(i/N_RING*Math.PI*2))),
@@ -155,6 +219,7 @@ export class World{
   update(s,cam){
     const i0=Math.max(0,Math.floor((s-BEHIND)/CHUNK)),i1=Math.floor((s+AHEAD)/CHUNK);
     for(const[i,c]of this.chunks)if(i<i0||i>i1){this.scene.remove(c);c.traverse(o=>{if(o.isInstancedMesh)o.dispose();else if(o.geometry&&o.userData.own)o.geometry.dispose();});this.chunks.delete(i);}
+    this.obs.ensure((i1+2)*CHUNK);
     for(let i=i0;i<=i1;i++)if(!this.chunks.has(i)){const c=this.build(i);this.chunks.set(i,c);this.scene.add(c);}
     this.rings.position.set(cam.x,0,cam.z);
     // morph the skylines toward the region ahead
@@ -164,14 +229,22 @@ export class World{
         for(let i=0;i<=N_RING;i++){const h=w[0]*L[0][i]+w[1]*L[1][i]+w[2]*L[2][i];p.setY(i*2+1,h);uv.setX(i*2+1,h);}
         p.needsUpdate=uv.needsUpdate=true;}}
   }
+  // what the runner (at s, u, feet y above the path) is hitting, if anything
+  collide(s,u,y,slide){for(const o of this.obs.near(s)){if(o.kind==='gap'||s<o.s-.2||s>o.s+o.len+.1)continue;
+      let lane=false;for(let l=0;l<3;l++)if(o.mask[l]&&Math.abs(u-(l-1)*LANE)<.9)lane=true;if(!lane)continue;
+      if(o.kind==='log'&&y>o.h1-.12)continue;
+      if(o.kind==='branch'&&y+(slide?.95:1.8)<o.h0)continue;
+      if(o.kind[0]==='r'&&y>o.h1)continue;
+      return o;}return null;}
+  gapAt(s){for(const o of this.obs.near(s))if(o.kind==='gap'&&s>o.s+.3&&s<o.s+o.len-.3)return o;return null;}
   pos(s,u,o){const f=this.path.at(s,o);return[f.x+u*f.rx,this.path.ground(s,u),f.z+u*f.rz];}
   build(ci){
     const g=new THREE.Group(),P=this.path,s0=ci*CHUNK,F={};
     // terrain: rows every 2 m, columns dense near the path and sparse out on the banks
-    const U=[-120,-88,-64,-47,-35,-26,-19,-14,-10,-7.2,-5.4,-4.2,-3.4,0,3.4,4.2,5.4,7.2,10,14,19,26,35,47,64,88,120],R=21,C=U.length;
+    const U=[-120,-88,-64,-47,-35,-26,-19,-14,-10,-7.2,-5.4,-4.2,-3.4,0,3.4,4.2,5.4,7.2,10,14,19,26,35,47,64,88,120],R=41,C=U.length;
     const pos=new Float32Array(R*C*3),nor=new Float32Array(R*C*3),uv=new Float32Array(R*C*2),bio=new Float32Array(R*C*2),idx=[];
     const v=new THREE.Vector3(),a=new THREE.Vector3(),b=new THREE.Vector3(),E=.6;
-    for(let r=0;r<R;r++){const s=s0+r*2,w=P.bio(s);for(let c=0;c<C;c++){const u=U[c],k=r*C+c,p=this.pos(s,u,F);pos.set(p,k*3);uv.set([s,u],k*2);bio.set([w[1],w[2]],k*2);
+    for(let r=0;r<R;r++){const s=s0+r,w=P.bio(s);for(let c=0;c<C;c++){const u=U[c],k=r*C+c,p=this.pos(s,u,F);pos.set(p,k*3);uv.set([s,u],k*2);bio.set([w[1],w[2]],k*2);
       const p1=this.pos(s+E,u,F),p2=this.pos(s-E,u,F),p3=this.pos(s,u+E,F),p4=this.pos(s,u-E,F);
       a.set(p1[0]-p2[0],p1[1]-p2[1],p1[2]-p2[2]);b.set(p3[0]-p4[0],p3[1]-p4[1],p3[2]-p4[2]);v.crossVectors(b,a).normalize();if(v.y<0)v.negate();nor.set([v.x,v.y,v.z],k*3);
       if(r<R-1&&c<C-1)idx.push(k,k+C,k+1,k+1,k+C,k+C+1);}}
@@ -180,15 +253,46 @@ export class World{
     tg.setAttribute('aId',new THREE.BufferAttribute(new Float32Array(R*C).fill(ID.GROUND),1));tg.setIndex(idx);
     const tm=new THREE.Mesh(tg,this.mat);tm.userData.own=true;g.add(tm);
     // the path: a ribbon a few cm above the ground; kerbs, studs and planks are drawn by the shader from (s,u)
+    const gaps=this.obs.between(s0-CHUNK,s0+2*CHUNK).filter(o=>o.kind==='gap'),inGap=x=>gaps.some(o=>x>=o.s&&x<o.s+o.len);
     {const ppos=[],pnor=[],puv=[],pbio=[],pidx=[],W=[-PATH_HW,-1.1,1.1,PATH_HW];
-      for(let r=0;r<R;r++){const s=s0+r*2,f=P.at(s,F),y=P.height(s)+.06,dy=(P.height(s+.5)-P.height(s-.5)),w=P.bio(s);
+      for(let r=0;r<R;r++){const s=s0+r,f=P.at(s,F),y=P.height(s)+.06,dy=(P.height(s+.5)-P.height(s-.5)),w=P.bio(s);
         v.set(-f.fx*dy,1,-f.fz*dy).normalize();
         for(const u of W){ppos.push(f.x+u*f.rx,y,f.z+u*f.rz);pnor.push(v.x,v.y,v.z);puv.push(s,u);pbio.push(w[1],w[2]);}
-        if(r<R-1)for(let c=0;c<W.length-1;c++){const k=r*W.length+c,n=W.length;pidx.push(k,k+n,k+1,k+1,k+n,k+n+1);}}
+        if(r<R-1&&!inGap(s+.5))for(let c=0;c<W.length-1;c++){const k=r*W.length+c,n=W.length;pidx.push(k,k+n,k+1,k+1,k+n,k+n+1);}}
       const pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.Float32BufferAttribute(ppos,3));pg.setAttribute('normal',new THREE.Float32BufferAttribute(pnor,3));
       pg.setAttribute('aUV',new THREE.Float32BufferAttribute(puv,2));pg.setAttribute('aBio',new THREE.Float32BufferAttribute(pbio,2));
       pg.setAttribute('aId',new THREE.Float32BufferAttribute(new Array(ppos.length/3).fill(ID.PATH),1));pg.setIndex(pidx);
       const pm=new THREE.Mesh(pg,this.mat);pm.userData.own=true;g.add(pm);}
+    // gaps that start in this chunk: the cut edges of the path, and water (or a dry chasm floor) below
+    for(const o of gaps){if(o.s<s0||o.s>=s0+CHUNK)continue;const pos=[],uvs=[],bio=[],ids=[];
+      const quad=(A,B,C,D,id,ua,ub,sa,w)=>{for(const q of[A,B,C,A,C,D])pos.push(...q);for(const uu of[ua,ub,ub,ua,ub,ua])uvs.push(sa,uu);for(let i=0;i<6;i++){bio.push(w[1],w[2]);ids.push(id);}};
+      for(const se of[o.s,o.s+o.len]){const f=P.at(se,F),h=P.height(se),w=P.bio(se),L=-PATH_HW,Rr=PATH_HW;
+        const p=(u,y)=>[f.x+u*f.rx,y,f.z+u*f.rz];quad(p(L,h+.06),p(Rr,h+.06),p(Rr,h-.9),p(L,h-.9),ID.ROCK,L,Rr,se,w);}
+      for(let x=o.s-2.5;x<o.s+o.len+2.5;x+=1){const f0=P.at(x,F),h0=P.height(x)-1.7,f1=P.at(x+1,{}),h1=P.height(x+1)-1.7,w=P.bio(x);
+        const q0=u=>[f0.x+u*f0.rx,h0,f0.z+u*f0.rz],q1=u=>[f1.x+u*f1.rx,h1,f1.z+u*f1.rz];quad(q0(-12),q0(12),q1(12),q1(-12),ID.WATER,-12,12,x,w);}
+      const wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));wg.setAttribute('aUV',new THREE.Float32BufferAttribute(uvs,2));
+      wg.setAttribute('aBio',new THREE.Float32BufferAttribute(bio,2));wg.setAttribute('aId',new THREE.Float32BufferAttribute(ids,1));wg.computeVertexNormals();
+      const wm=new THREE.Mesh(wg,this.mat);wm.userData.own=true;g.add(wm);
+      const w=P.bio(o.s),reg=o.seed<w[0]?0:o.seed<w[0]+w[1]?1:2,Up=new THREE.Vector3(0,1,0),Rv=new THREE.Vector3(),Bv=new THREE.Vector3();
+      for(const[se,sg]of[[o.s,1],[o.s+o.len,-1]]){const f=P.at(se,F),m=new THREE.Mesh(this.og.gap[reg],this.omat);m.matrixAutoUpdate=false;
+        m.matrix.makeBasis(Rv.set(f.rx*sg,0,f.rz*sg),Up,Bv.set(-f.fx*sg,0,-f.fz*sg)).setPosition(f.x,P.height(se)+.06,f.z);g.add(m);}}
+    // obstacles, dressed for the region they stand in, each with a shadow pooled on the path beneath it
+    {const B=new THREE.Vector3(),Rv=new THREE.Vector3(),Up=new THREE.Vector3(0,1,0),sp=[],suv=[],sbio=[];
+      const shadow=(o,u0,u1)=>{const a=o.s-.75,b=o.s+o.len+.75,N=4,w=P.bio(o.s);
+        for(let i=0;i<N;i++)for(const[ka,kb]of[[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]]){const ss=a+(b-a)*(i+ka)/N,uu=kb?u1:u0,f=P.at(ss,F);
+          sp.push(f.x+uu*f.rx,P.height(ss)+.085,f.z+uu*f.rz);suv.push(((i+ka)/N)*2-1,kb?1:-1);sbio.push(w[1],w[2]);}};
+      for(const o of this.obs.between(s0,s0+CHUNK)){if(o.kind==='gap')continue;const w=P.bio(o.s),reg=o.seed<w[0]?0:o.seed<w[0]+w[1]?1:2,sc=o.s+o.len/2,f=P.at(sc,F);
+        const lanes=o.kind[0]==='r'?[0,1,2].filter(l=>o.mask[l]):[1];
+        for(const l of lanes){const geo=o.kind==='log'?this.og.log[reg]:o.kind==='branch'?this.og.branch[reg]:reg===2&&(o.seed*7+l)%1<.5?this.og.saguaro:this.og.rock[reg];
+          const m=new THREE.Mesh(geo,this.omat),u=o.kind[0]==='r'?(l-1)*LANE:0;m.matrixAutoUpdate=false;
+          m.matrix.makeBasis(Rv.set(f.rx,0,f.rz),Up,B.set(-f.fx,0,-f.fz)).setPosition(f.x+u*f.rx,P.height(sc)+.06,f.z+u*f.rz);g.add(m);
+          if(o.kind[0]==='r')shadow(o,u-1.15,u+1.15);}
+        if(o.kind[0]!=='r')shadow(o,-PATH_HW-.2,PATH_HW+.2);}
+      if(sp.length){const sg=new THREE.BufferGeometry(),n=sp.length/3;sg.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+        sg.setAttribute('normal',new THREE.Float32BufferAttribute(new Array(n*3).fill(0).map((_,i)=>i%3===1?1:0),3));
+        sg.setAttribute('aUV',new THREE.Float32BufferAttribute(suv,2));sg.setAttribute('aBio',new THREE.Float32BufferAttribute(sbio,2));
+        sg.setAttribute('aId',new THREE.Float32BufferAttribute(new Array(n).fill(ID.SHADOW),1));
+        const sm=new THREE.Mesh(sg,this.mat);sm.userData.own=true;g.add(sm);}}
     // plants and rocks, seeded by chunk so the world is the same every run. Each region places its own
     // things, each kept with the probability that region holds at that spot, so borders mix naturally.
     const rnd=rng(ci*7919+13),put={};for(const k in this.geo)put[k]=[];
