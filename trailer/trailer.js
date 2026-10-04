@@ -229,10 +229,66 @@ async function renderMP4(){
   await upload('riso-runner-trailer.mp4',blob);status(`done: riso-runner-trailer.mp4 (${(blob.size/1e6).toFixed(1)} MB, ${TOTAL}s)`);window.RENDER_DONE=blob.size;}
 async function preview(){await run(async(f,t)=>{show();status(`${t.toFixed(2)}s`);await breathe();});}
 
-window.trailer={HITS,run,contactSheet,frames,renderMP4,preview,renderAudio,SHOTS,LOG,MARKS,TOTAL};
+// ---------- the itch kit: captioned GIFs (frame sequences, assembled by tools/gifs.py), screenshots, cover, banner ----------
+// ?trailer#kit uploads gif-<name>-<nnn>.jpg (960×540, 15 fps), shot<n>.jpg (1920×1080, no captions), cover.png (1260×1000)
+// and banner.png (1920×690).
+const GIF=[
+  {name:'run',region:0,seed:11,s:2470,dur:3.6,word:'RUN.',line:'as far as you can'},
+  {name:'dodge',region:0,seed:23,s:5530,dur:3.6,word:'DODGE.',line:'jump, duck, change lanes'},
+  {name:'forks',region:0,seed:5,fork:1,side:1,dur:3.6,word:'FORKS.',line:'pick where you run next'},
+  {name:'regions',dur:3.6,word:'SIX REGIONS.',parts:[[1,31,3980],[2,41,4000],[3,51,3990],[4,61,4000],[5,71,3990],[0,23,5480]]},
+  {name:'focus',region:1,seed:83,s:2500,gather:true,focusAt:.3,dur:3.6,word:'FOCUS.',line:'time slows, pickups fly to you'},
+  {name:'postcard',region:3,seed:97,s:2600,crash:true,dur:4.2,word:'POSTCARDS.',line:'every run ends on one'},
+  {name:'cover',region:2,seed:41,s:4000,dur:3.6,cover:true},
+];
+const STILLS=[[0,11,2470,1.6],[1,31,3980,1.2],[2,41,4000,1.4],[3,51,3990,1.0],[4,61,4000,1.4],[5,71,3990,1.3]];
+const NAMES=REGION_INFO.map(r=>r.name.toUpperCase());
+async function grab(sh,secs,each){PRE=true;setup(sh);for(let i=0;i<Math.round(.5*FPS);i++){T=0;await stepShot(sh,-.5+i*DT);}PRE=false;
+  for(let i=0;i<Math.round(secs*FPS);i++){const a=i*DT;T=a;await stepShot(sh,a);ox.drawImage(game,0,0,FW,FH);if(sh.pc)compose({pc:sh.pc,pcT:sh.pcT,dur:9},a);await each(i,a);}}
+const half=document.createElement('canvas');half.width=960;half.height=540;const hx=half.getContext('2d');
+function gifCaption(a,word,line){label(a,{t0:.05,dur:99,lines:line?[big(word,150),small(line,52)]:[big(word,150)],x:.04,y:.2,rot:-2,align:'left'});}
+async function kit(only=null){   // only: a list of GIF names (and 'stills') to redo
+  // GIFs: every 4th frame (15 fps), with the caption stamped on
+  for(const g of GIF){if(only&&!only.includes(g.name))continue;let n=0;
+    const shots=g.parts?g.parts.map(([region,seed,s])=>({region,seed,s,dur:g.dur/g.parts.length})):[{...g}];
+    for(const sh of shots){await grab(sh,sh.dur,async(i,a)=>{if(i%4)return;
+      if(g.word)gifCaption(n/15,g.word,g.parts?NAMES[sh.region]:g.line);
+      if(g.cover)label(n/15,{t0:.05,dur:99,lines:[big('RISO RUNNER',170)],y:.5,rot:-2});
+      hx.drawImage(out,0,0,960,540);await upload(`gif-${g.name}-${String(n++).padStart(3,'0')}.jpg`,await toBlob(half,'image/jpeg',.92));
+      vx.drawImage(out,0,0,view.width,view.height);status(`gif ${g.name} ${n}`);});}}
+  // screenshots: one per region, no captions
+  if(!only||only.includes('stills'))for(const [k,[region,seed,s,at]] of STILLS.entries()){let shot=null;
+    await grab({region,seed,s},at+DT,async(i,a)=>{if(a>=at-1e-6&&!shot){shot=true;await upload(`shot${k+1}.jpg`,await toBlob(out,'image/jpeg',.9));}});
+    if(k===2)coverArt=await createImageBitmap(out);if(k===0)bannerArt=await createImageBitmap(out);status(`shot ${k+1}`);}
+  if(coverArt){await upload('cover.png',await toBlob(cover(),'image/png'));await upload('banner.png',await toBlob(banner(),'image/png'));}
+  status('kit uploaded');window.KIT_DONE=true;}
+let coverArt=null,bannerArt=null;
+const INKS6=[['Sunflower','Teal','Federal Blue'],['Sunflower','Orange','Burgundy'],['Yellow','Green','Hunter Green'],['Sunflower','Orange','Medium Blue'],['Aqua','Medium Blue','Federal Blue'],['Yellow','Violet','Federal Blue']].map(r=>r.map(n=>Riso.INKS[n]));   // each region's three inks
+function regMark(x,cx,cy,ink){x.strokeStyle=ink;x.lineWidth=3;x.beginPath();x.arc(cx,cy,14,0,7);x.moveTo(cx-22,cy);x.lineTo(cx+22,cy);x.moveTo(cx,cy-22);x.lineTo(cx,cy+22);x.stroke();}
+function raggedTop(x,y,w,r){x.beginPath();x.moveTo(0,y+20);for(let i=0;i<=40;i++)x.lineTo(w*i/40,y+10+r()*20);x.lineTo(w,9999);x.lineTo(0,9999);x.closePath();x.fill();}
+function cover(){const W=1260,H=1000,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),r=rng(9);
+  x.fillStyle=PAPER;x.fillRect(0,0,W,H);
+  // the art: the jungle frame, cropped to the top of the card
+  const sw=1920,sh=sw*660/W;x.drawImage(coverArt,0,(1080-sh)/2-40,sw,sh,0,0,W,660);
+  x.fillStyle=PAPER;raggedTop(x,628,W,r);
+  const ink='#3d5588',off='#ff6c2f';x.textAlign='center';x.textBaseline='alphabetic';
+  x.font=`900 210px ${STENCIL}`;x.letterSpacing='6px';x.fillStyle=off;x.fillText('RISO RUNNER',W/2+8,858);x.fillStyle=ink;x.fillText('RISO RUNNER',W/2,850);
+  x.font=`900 62px ${STENCIL}`;x.letterSpacing='5px';x.fillStyle=off;x.fillText('RUN AS FAR AS YOU CAN',W/2+4,938);x.fillStyle=ink;x.fillText('RUN AS FAR AS YOU CAN',W/2,935);
+  x.letterSpacing='0px';regMark(x,44,H-44,ink);regMark(x,W-44,H-44,ink);
+  INKS6.flat().forEach((h,i)=>{x.fillStyle=h;x.fillRect(W/2-9*28+i*28,H-30,24,12);});
+  return c;}
+function banner(){const W=1920,H=690,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  x.drawImage(bannerArt,0,(1080-H)/2-60,W,H,0,0,W,H);
+  const ink='#3d5588',bx=W*.5,by=H*.52;x.save();x.translate(bx,by);x.rotate(-1.5*Math.PI/180);
+  const w=1260,h=340;x.fillStyle='rgba(0,0,0,.18)';x.fillRect(-w/2+12,-h/2+12,w,h);x.fillStyle=PAPER;x.fillRect(-w/2,-h/2,w,h);x.strokeStyle=ink;x.lineWidth=6;x.strokeRect(-w/2+3,-h/2+3,w-6,h-6);
+  x.textAlign='center';x.font=`900 190px ${STENCIL}`;x.letterSpacing='6px';x.fillStyle='#ff6c2f';x.fillText('RISO RUNNER',6,32);x.fillStyle=ink;x.fillText('RISO RUNNER',0,26);
+  x.font=`400 42px ${MONO}`;x.letterSpacing='0px';x.fillText('run as far as you can · free · phone or desktop',0,112);x.restore();
+  return c;}
+
+window.trailer={kit,HITS,run,contactSheet,frames,renderMP4,preview,renderAudio,SHOTS,LOG,MARKS,TOTAL};
 await document.fonts.load(`900 40px "Big Shoulders Stencil Display"`);await document.fonts.load(`20px "Cutive Mono"`);
 $('#tPrev').onclick=preview;$('#tSheet').onclick=()=>contactSheet();$('#tRender').onclick=renderMP4;
 status(`ready · ${TOTAL}s · ${SHOTS.length} shots`);
 const h=location.hash;
-try{if(h==='#sheet')await contactSheet();else if(h.startsWith('#frames='))await frames(h.slice(8).split(','));else if(h==='#render')await renderMP4();}
+try{if(h==='#sheet')await contactSheet();else if(h.startsWith('#frames='))await frames(h.slice(8).split(','));else if(h==='#render')await renderMP4();else if(h.startsWith('#kit'))await kit(h.includes('=')?h.split('=')[1].split(','):null);}
 catch(e){console.error(e);status('error: '+e.message);window.RENDER_ERR=String(e&&e.stack||e);}
