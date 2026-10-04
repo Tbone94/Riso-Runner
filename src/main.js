@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import {inkMaterial,skyMaterial,signMaterial,PrintPass,hex3} from './print.js';
 import {World,regionAt,route,REGIONS,REGION_INFO,LEG,BLEND,LANE,START,FORK_LEN,forkAt,speedAt,iceAt} from './world.js';
 import {Air} from './air.js';
+import {postcard} from './postcard.js';
 
 const {INKS,PAPERS}=window.Riso;
 // light → mid → key, matching the ink roles (sky glow / foliage / trunks, shade, outlines)
@@ -73,14 +74,22 @@ new ResizeObserver(resize).observe(frameEl);
 const G=26,JUMP_V=8.8;
 const R={s:START,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0};
 let state='title',deadT=0,startS=START,runNo=store.get('run',0),best=store.get('best',0),shake=0,lastLeg=0,duckHeld=false;
-function reset(){Object.assign(R,{s:startS,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0});lastLeg=regionAt(startS).leg;duckHeld=false;}
-function begin(){if(Object.keys(route.picks).length){route.reset(route.start);world.rebuildAll();}reset();runNo++;store.set('run',runNo);state='run';hideCard();toast(regionAt(R.s));}
+// the roller closes in for STUMBLE_WINDOW seconds after a stumble; stumble again inside it and it catches you
+const STUMBLE_WINDOW=6,FOCUS_DROPS=45,FOCUS_T=6,FOCUS_SLOW=.7;
+let caught=false,laneT=9,runT=0,lastStumble=-99,warned=false,ink=0,meter=0,focusT=0,rollerVis=0,needSnap=false,snap=null,card_pc=null;
+function reset(){Object.assign(R,{s:startS,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0});lastLeg=regionAt(startS).leg;duckHeld=false;
+  runT=0;laneT=9;lastStumble=-99;ink=0;meter=0;focusT=0;rollerVis=0;}
+function begin(){snap=null;card_pc=null;if(Object.keys(route.picks).length)route.reset(route.start);world.resetRun();reset();runNo++;store.set('run',runNo);state='run';hideCard();toast(regionAt(R.s));}
+function focus(){if(state!=='run'||meter<1||focusT>0)return;focusT=FOCUS_T;meter=0;lastStumble=-99;toastText('FOCUS','time slows, ink comes to you');}
+const events=[];   // stumbles and crashes, for testing from the console
+function stumble(o){o.grazed=runNo;events.push({e:'stumble',s:R.s,t:runT,k:o.kind});if(runT-lastStumble<STUMBLE_WINDOW){die('caught');return;}
+  lastStumble=runT;R.v*=.72;shake=.6;if(!warned){warned=true;toastText('THE ROLLER','it\'s right behind you: don\'t stumble again');}}
 function jump(){if(state!=='run')return;if(!R.air&&!world.gapAt(R.s)){R.vy=JUMP_V;R.air=true;}else R.bufJump=.15;}
 function duck(on){if(state!=='run'){duckHeld=false;return;}duckHeld=on;if(on&&R.air)R.vy=Math.min(R.vy,-16);}   // in the air, ducking drops you fast
-function lane(d){if(state!=='run'||R.branch)return;R.lane=Math.max(-1,Math.min(1,R.lane+d));}
-function die(how){state='dead';deadT=0;proofT=.55;shake=how==='fell'?0:1;duckHeld=false;
+function lane(d){if(state!=='run'||R.branch)return;const l=Math.max(-1,Math.min(1,R.lane+d));if(l!==R.lane){R.lane=l;laneT=0;}}
+function die(how){events.push({e:'die',how,s:R.s,t:runT});caught=how==='caught';state='dead';deadT=0;proofT=.55;shake=how==='fell'?0:1;duckHeld=false;needSnap=true;
   const m=Math.floor(R.s-startS),wasBest=m>best;if(wasBest){best=m;store.set('best',best);}
-  setTimeout(()=>{if(state==='dead')showCard('dead',m,how,wasBest);},650);}
+  setTimeout(()=>{if(state==='dead')showCard('dead',m,how,wasBest);},how==='caught'?1300:700);}
 function step(dt){
   const target=speedAt(R.s);R.v=Math.min(target,R.v+target*dt*1.6);   // eases up to speed at the start of a run
   R.s+=R.v*dt;
@@ -99,7 +108,13 @@ function step(dt){
   if(!gap&&R.y<=0){R.y=0;R.vy=0;if(R.air){R.air=false;if(R.bufJump>0&&!duckHeld)jump();}}
   R.duck=duckHeld&&!R.air;
   if(gap&&R.y<-.5){die('fell');return;}
-  if(!S.god){const hit=world.collide(R.s,R.u,R.y,R.duck);if(hit){R.s=Math.min(R.s,hit.o.s-1.5);die(hit.k);return;}}   // stop just short, so you see what you hit
+  laneT+=dt;
+  if(!S.god){const hit=world.collide(R.s,R.u,R.y,R.duck,{air:R.air,duckHeld,lane:R.lane,laneT});
+    if(hit&&!hit.graze){R.s=Math.min(R.s,hit.o.s-1.5);die(hit.k);return;}   // stop just short, so you see what you hit
+    if(hit&&hit.o.grazed!==runNo){stumble(hit.o);if(state!=='run')return;}}
+  // ink drops; with focus, everything a few metres ahead flies to you
+  for(const d of world.pickup(R.s,R.u,R.y,R.duck,focusT>0?9:0)){world.collect(d,focusT>0,camera.position);ink++;meter=Math.min(1,meter+1/FOCUS_DROPS);}
+  runT+=dt;focusT=Math.max(0,focusT-dt);if(focusT>0)lastStumble=-99;
   const rg=regionAt(R.s);if(rg.leg!==lastLeg){lastLeg=rg.leg;toast(rg);}
   // the fork banner, while one is coming up
   const nk=Math.floor((R.s-forkAt(0)+200)/LEG),fs=forkAt(nk);
@@ -111,16 +126,30 @@ function step(dt){
 // ---------- HUD, cards and banners ----------
 const card=document.getElementById('card'),hud=document.getElementById('hud'),toastEl=document.getElementById('toast'),forkEl=document.getElementById('fork');
 const pad=n=>String(Math.max(0,n)).padStart(4,'0'),km=m=>(m/1000).toFixed(1)+' km';
-const WHY={log:'tripped on a log',branch:'hit a low branch',rock1:'ran into a rock',rock2:'ran into a rock',fell:'fell in',sign:'ran into the signpost',fall:'hit a fallen tree',tumble:'hit a tumbleweed'};
+const WHY={caught:'caught by the roller',log:'tripped on a log',branch:'hit a low branch',rock1:'ran into a rock',rock2:'ran into a rock',fell:'fell in',sign:'ran into the signpost',fall:'hit a fallen tree',tumble:'hit a tumbleweed'};
 function showCard(kind,m,how,wasBest){
   card.innerHTML=kind==='title'
     ?`<h1>RISO RUNNER</h1><p class="sub">run as far as you can</p>
       <p class="keys">← → change lane · ↑ jump · hold ↓ to duck<br><span>on a phone: swipe (hold after swiping down to stay low)</span></p><p class="go">SPACE / TAP TO RUN</p>${best?`<p class="best">BEST ${pad(best)} M</p>`:''}`
-    :`<h1>RUN OVER</h1><p class="sub">run ${runNo} · ${WHY[how]||''}</p>
-      <p class="big">${pad(m)} M</p><p class="best">${wasBest?'NEW BEST':'BEST '+pad(best)+' M'}</p><p class="go">SPACE / TAP TO RUN AGAIN</p>`;
+    :`<div class="cols"><div><h1>RUN OVER</h1><p class="sub">run ${runNo} · ${WHY[how]||''}</p>
+      <p class="big">${pad(m)} M</p><p class="best">${ink} ink · ${wasBest?'NEW BEST':'best '+pad(best)+' m'}</p>
+      <p class="go">SPACE / TAP TO RUN AGAIN</p></div>
+      <div><img class="pc" alt="Postcard of this run"><button class="save">SAVE POSTCARD</button></div></div>`;
+  if(kind!=='title'&&needSnap){print.render(scene,camera);takeSnap();}
+  if(kind!=='title'&&snap){const R2=regionAt(R.s),hex=[print.u.uInk0,print.u.uInk1,print.u.uInk2].map(x=>toHex(x.value));
+    card_pc=postcard({snap,region:REGION_INFO[R2.r].name,metres:m,ink,runNo,best,inks:hex,paper:PAPERS[S.paper],why:WHY[how]});
+    card.querySelector('.pc').src=card_pc.toDataURL('image/jpeg',.85);
+    const b=card.querySelector('.save');b.addEventListener('pointerup',e=>{e.stopPropagation();savePostcard();});}
   card.classList.add('show');}
+// Copy the frame just drawn (it must be read before the browser presents it).
+function takeSnap(){needSnap=false;snap=document.createElement('canvas');snap.width=canvas.width;snap.height=canvas.height;snap.getContext('2d').drawImage(canvas,0,0);}
+// Save the postcard: the share sheet where there is one (phones), a download otherwise.
+function savePostcard(){if(!card_pc)return;card_pc.toBlob(async blob=>{const name=`riso-runner-run-${runNo}.png`,file=new File([blob],name,{type:'image/png'});
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Riso Runner'});return;}}catch(e){if(e.name==='AbortError')return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);},'image/png');}
 function hideCard(){card.classList.remove('show');}
 let toastT=0;
+function toastText(title,sub){toastEl.innerHTML=`<b>${title}</b><span>${sub}</span>`;toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.classList.remove('show'),2800);}
 function toast(r){const info=REGION_INFO[r.r];toastEl.innerHTML=`<b>${info.name.toUpperCase()}</b><span>${info.twist?'watch out: '+info.twist:km(Math.max(0,r.leg*LEG))}</span>`;
   toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.classList.remove('show'),2800);}
 let forkHTML='',forkT=0;
@@ -173,7 +202,9 @@ document.getElementById('proof').onclick=()=>{proofT=.6;};
 const go=()=>{if(state==='title'||(state==='dead'&&deadT>.8))begin();};
 addEventListener('keydown',e=>{if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;const c=e.code;
   if(c==='KeyL'){toggleLab();return;}if(c==='KeyP'||c==='Escape'){togglePause();return;}if(c==='KeyC'){proofT=.6;return;}
+  if(state==='dead'&&c==='KeyS'&&card.classList.contains('show')){savePostcard();return;}
   if(state!=='run'){if(c==='Space'||c==='Enter'||c==='ArrowUp'){e.preventDefault();go();}return;}
+  if(c==='KeyF'){focus();return;}
   if(paused||e.repeat)return;
   if(c==='ArrowLeft'||c==='KeyA')lane(-1);else if(c==='ArrowRight'||c==='KeyD')lane(1);
   else if(c==='ArrowUp'||c==='KeyW'||c==='Space'){e.preventDefault();jump();}else if(c==='ArrowDown'||c==='KeyS'){e.preventDefault();duck(true);}});
@@ -189,6 +220,8 @@ frameEl.addEventListener('pointermove',e=>{if(!ptr)return;const dx=e.clientX-ptr
 const up=e=>{if(ptr){if(ptr.ducking)duck(false);else if(!ptr.done&&e&&Math.hypot(e.clientX-ptr.x,e.clientY-ptr.y)<10){if(state==='run')jump();else go();}}ptr=null;};
 frameEl.addEventListener('pointerup',up);frameEl.addEventListener('pointercancel',()=>up(null));
 card.addEventListener('pointerup',go);
+const focusEl=document.getElementById('focus'),inkEl=document.getElementById('ink');
+focusEl.addEventListener('pointerdown',e=>{e.stopPropagation();focus();});
 
 // ---------- loop ----------
 applyInks();applySun();resize();showCard('title');
@@ -198,7 +231,12 @@ const mix6=(w,key,out)=>{if(typeof RG[0][key]==='number'){let v=0;for(let r=0;r<
   out.set(0,0,0);for(let r=0;r<6;r++)if(w[r]){const a=RG[r][key];out.x+=a[0]*w[r];out.y+=a[1]*w[r];if(out.isVector3)out.z+=a[2]*w[r];}return out;};
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
-  if(!paused){t+=dt;if(state==='run')step(dt);else if(state==='dead'){deadT+=dt;if(R.y<0&&R.y>-6){R.vy-=G*dt;R.y+=R.vy*dt;}}}
+  const slow=focusT>0?FOCUS_SLOW:1;
+  if(!paused){t+=dt*slow;if(state==='run')step(dt*slow);else if(state==='dead'){deadT+=dt;if(R.y<0&&R.y>-6){R.vy-=G*dt;R.y+=R.vy*dt;}}}
+  // the roller: close behind after a stumble, falling back over the next few seconds; when it catches
+  // you it rolls right over the print
+  const near=state==='run'?Math.max(0,1-(runT-lastStumble)/STUMBLE_WINDOW):0;
+  rollerVis=state==='dead'&&caught?Math.min(3.6,rollerVis+dt*4):rollerVis+(near*.6-rollerVis)*(1-Math.exp(-5*dt));
   const P=world.path,f=P.at(R.s,F),a=P.at(R.s+22,A),k=1-Math.exp(-6*dt);
   // camera: path height is smoothed (hills), the runner's own jump/duck is not
   const py=P.height(R.s);pathY=pathY===null?py:pathY+(py-pathY)*k;
@@ -222,17 +260,21 @@ function frame(now){
   // misregistration: a base drift plus more with speed; the key plate stays nearly registered.
   // A crash snaps every plate into register for a moment.
   proofT=Math.max(0,proofT-dt);
-  const sp=state==='run'?R.v:0,m=proofT>0?0:S.mis+sp*S.speedMis,u=print.u,tick=Math.floor(t*12),j=S.reprint?(i=>(Math.sin(tick*12.9898+i*78.233)*43758.5453%1)*.35):()=>0;
+  const sp=state==='run'?R.v:0,m=proofT>0||focusT>0?0:S.mis+sp*S.speedMis,u=print.u,tick=Math.floor(t*12),j=S.reprint?(i=>(Math.sin(tick*12.9898+i*78.233)*43758.5453%1)*.35):()=>0;
   u.uMis0.value.set(-.85*m+j(1)*m,.55*m+j(2)*m);u.uMis1.value.set(.75*m+j(3)*m,-.4*m+j(4)*m);u.uMis2.value.set(.08*m,.04*m);
   u.uSeed.value=S.reprint?(tick*.618034)%1:0;
-  u.uGrain.value=S.grain;u.uGrainAmt.value=S.grainAmt;u.uInkAmt.value=S.ink;u.uSoft.value=S.soft;u.uDepthDrift.value=S.drift;u.uOutline.value=S.outline;u.uThick.value=S.thick;
+  u.uGrain.value=S.grain;u.uGrainAmt.value=S.grainAmt;u.uInkAmt.value=S.ink;u.uSoft.value=S.soft;u.uDepthDrift.value=focusT>0?0:S.drift;u.uRoller.value=rollerVis;u.uTime.value=t;u.uOutline.value=S.outline;u.uThick.value=S.thick;
   u.uWobble.value=S.wobble;u.uDefects.value=S.defects;u.uDots.value=S.dots;u.uTone.value=S.tone;u.uHatch.value=S.hatch;u.uDeckle.value=S.deckle;
   applyInks();
   print.render(scene,camera);
+  if(needSnap)takeSnap();   // the moment the run ended, for the postcard
   const dist=Math.floor(R.s-startS);hud.textContent=state==='title'?'':pad(dist)+' M';
+  inkEl.textContent=state==='title'?'':ink+' INK';
+  focusEl.style.setProperty('--fill',(focusT>0?focusT/FOCUS_T:meter)*100+'%');focusEl.classList.toggle('ready',meter>=1&&focusT<=0);focusEl.classList.toggle('on',focusT>0);
+  focusEl.classList.toggle('hide',state==='title');
   fpsN++;fpsT+=dt;if(fpsT>.5){fpsEl.textContent=Math.round(fpsN/fpsT)+' fps';fpsN=0;fpsT=0;distEl.textContent=runNo+' · BEST '+pad(best);}
   requestAnimationFrame(frame);
 }
-window.RR={S,R,print,world,camera,scene,air,route,applyInks,applySun,begin,jump,duck,lane,
+window.RR={S,R,print,world,camera,scene,air,route,applyInks,applySun,begin,jump,duck,lane,focus,events,fill:()=>{meter=1;},get ink(){return ink;},get meter(){return meter;},get focusT(){return focusT;},
   tick:dt=>{world.update(R.s,camera.position);if(state==='run')step(dt);},get state(){return state;},get paused(){return paused;}};   // for poking at it from the console
 requestAnimationFrame(frame);

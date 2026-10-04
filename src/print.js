@@ -16,7 +16,7 @@ float vnoise(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
 // Material ids (A channel = (id+.5)/64, plus a per-instance jitter so neighbouring plants outline apart).
 // Obstacles add OBST to their id, which the print pass reads to cut them a heavier outline.
 export const ID={SKY:0,GROUND:1,PATH:2,LEAF:3,TRUNK:4,ROCK:5,MOUNTAIN:6,RIDGE:7,GRASS:8,BIRCH:9,
-  VINE:10,MOSS:11,CACTUS:12,STRATA:13,FROND:14,SHRUB:15,DRYGRASS:16,PALM:17,WATER:18,AIR:19,SHADOW:20};   // AIR (motes, birds) and SHADOW (under obstacles) are never outlined
+  VINE:10,MOSS:11,CACTUS:12,STRATA:13,FROND:14,SHRUB:15,DRYGRASS:16,PALM:17,WATER:18,AIR:19,SHADOW:20,DROP:21};   // AIR (motes, birds) and SHADOW (under obstacles) are never outlined
 export const OBST=24;
 
 // ---------- the ink material: one shader for every surface ----------
@@ -36,27 +36,32 @@ attribute float aId;
 attribute vec2 aUV;
 attribute vec3 aBio,aBio2;
 uniform float uTime;
-varying vec3 vN,vW,vBio,vBio2;varying float vId,vSeed,vH,vReg;varying vec2 vUV;
+varying vec3 vN,vW,vBio,vBio2;varying float vId,vSeed,vH,vReg,vInk;varying vec2 vUV;
 void main(){
-  mat4 m=modelMatrix;float seed=0.,reg=aBio2.z;
+  mat4 m=modelMatrix;float seed=0.,reg=aBio2.z,ink=0.;
   #ifdef USE_INSTANCING
     m=modelMatrix*instanceMatrix;
   #endif
   #ifdef USE_INSTANCING_COLOR
-    seed=instanceColor.r;reg=floor(instanceColor.g*8.+.5);
+    seed=instanceColor.r;reg=floor(instanceColor.g*8.+.5);ink=floor(instanceColor.b*4.+.5);
   #endif
-  vec4 w=m*vec4(position,1.);
+  // ink drops spin and bob
+  vec3 p=position;bool drop=abs(aId-21.)<.5;
+  vec3 nl=normal;
+  if(drop){float a=uTime*2.4+seed*6.;mat2 R=mat2(cos(a),-sin(a),sin(a),cos(a));p.xz=R*p.xz;nl.xz=R*nl.xz;}
+  vec4 w=m*vec4(p,1.);
+  if(drop)w.y+=.09*sin(uTime*3.1+seed*20.);
   // leaves, fronds and grass sway with height (geometry is built 1 unit tall); vines swing from the top
   float k=0.;
   if(abs(aId-3.)<.5||abs(aId-8.)<.5||abs(aId-14.)<.5||abs(aId-16.)<.5){k=max(position.y,0.);k*=k;}
   else if(abs(aId-10.)<.5){k=1.-position.y;k*=k*2.;}
   if(k>0.){w.x+=sin(uTime*1.3+seed*40.+w.z*.06)*.22*k;w.z+=cos(uTime*1.05+seed*31.+w.x*.05)*.14*k;}
-  vN=normalize(mat3(m)*normal);vW=w.xyz;vId=aId;vSeed=seed;vUV=aUV;vBio=aBio;vBio2=aBio2;vH=position.y;vReg=reg;
+  vN=normalize(mat3(m)*nl);vW=w.xyz;vId=aId;vSeed=seed;vUV=aUV;vBio=aBio;vBio2=aBio2;vH=position.y;vReg=reg;vInk=ink;
   gl_Position=projectionMatrix*viewMatrix*w;
 }`,
     fragmentShader:`
 uniform float uTime,uFogDist,uSnowLine,uStrata;uniform vec3 uSun,uFogInk,uFarInk,uNearInk;uniform vec2 uRingFog;
-varying vec3 vN,vW,vBio,vBio2;varying float vId,vSeed,vH,vReg;varying vec2 vUV;
+varying vec3 vN,vW,vBio,vBio2;varying float vId,vSeed,vH,vReg,vInk;varying vec2 vUV;
 ${NOISE}
 // per region: forest, autumn, jungle, desert, snow, night (light, mid, key)
 const vec3 GL[6]=vec3[6](vec3(.45,.17,0.),vec3(.5,.34,.02),vec3(.3,.37,.02),vec3(.48,.11,0.),vec3(.03,0.,0.),vec3(.05,.35,.25));   // ground, lit
@@ -130,6 +135,9 @@ void main(){
   }else if(id==18){                               // a stream (rippled key lines on mid), a dry chasm in the desert, ice in the snow
     float rip=smoothstep(.82,.9,fract(vUV.y*.9+sin(vUV.x*1.7+uTime*1.5)*.25+uTime*.15));
     L=vec3(.08,.35,.38)+vec3(0.,0.,.4)*rip;L=mix(L,vec3(.1,.3,.85),W[3]);L=mix(L,vec3(.3,.05,.1)+vec3(0.,0.,.3)*rip,W[4]);L=mix(L,vec3(0.,.45,.75),W[5]);S=L;lit=1.;deep=0.;
+  }else if(id==21){                               // an ink drop: solid ink, with a glint of bare paper
+    L=vInk<.5?vec3(.95,0.,0.):vInk<1.5?vec3(0.,.95,0.):vec3(0.,0.,.95);
+    L*=1.-.95*smoothstep(.75,.92,dot(N,normalize(vec3(-.45,.75,.5))));S=L;lit=1.;deep=0.;
   }else if(id==20){                               // a shadow pooled on the path under an obstacle, with a ragged edge
     vec2 q=vUV;float r=q.x*q.x+pow(abs(q.y),6.)+.25*(vnoise(vW.xz*2.3)-.5);if(r>1.)discard;
     L=vec3(0.);for(int i=0;i<6;i++)L+=W[i]*PS[i];L+=vec3(0.,.08,.32);S=L;lit=1.;deep=0.;}
@@ -146,7 +154,8 @@ void main(){
   float f=id>=6&&id<=7?fogK:1.-exp(-pow(dist/uFogDist,1.5));
   float oid=float(id);
   #ifdef OBSTACLE
-    f*=.35;d.z+=.1;d.x+=.4*lit*smoothstep(.2,.7,N.y);oid+=${OBST}.;   // a sunlit top in light ink over a dark body
+    if(id==21)f*=.2;else{f*=.35;d.z+=.1;d.x+=.4*lit*smoothstep(.2,.7,N.y);}   // a sunlit top in light ink over a dark body
+    oid+=${OBST}.;
   #endif
   d=mix(d,uFogInk,f);
   gl_FragColor=vec4(clamp(d,0.,1.),(oid+.5+(vSeed-.5)*.4)/64.);
@@ -204,7 +213,7 @@ const POST_FRAG=`
 uniform sampler2D tDens,tDepth,tBlue;
 uniform vec2 uRes,uDensRes,uMis0,uMis1,uMis2,uSunUV;
 uniform vec3 uInk0,uInk1,uInk2,uPaper;
-uniform float uNear,uFar,uDepthDrift,uGrain,uGrainAmt,uInkAmt,uSoft,uOutline,uThick,uWobble,uDefects,uDots,uSeed,uDpr,uShaft,uTone,uHatch,uDeckle;
+uniform float uNear,uFar,uDepthDrift,uGrain,uGrainAmt,uInkAmt,uSoft,uOutline,uThick,uWobble,uDefects,uDots,uSeed,uDpr,uShaft,uTone,uHatch,uDeckle,uRoller,uTime;
 varying vec2 vUv;
 ${NOISE}
 float linZ(float d){float z=d*2.-1.;return 2.*uNear*uFar/(uFar+uNear-z*(uFar-uNear));}
@@ -262,6 +271,11 @@ vec3 plate(vec2 uv,vec2 fc,float dk,vec2 mis,int k,vec3 ink,float sh,float sky,f
   tire*=step(.55,fract(fc.y/uDpr/9.))*vnoise(vec2(tx*40.,fc.y/uDpr/120.));
   d*=uInkAmt*(1.-uDefects*.4*starve);
   if(k==2)d+=uDefects*.22*tire;
+  // the roller: as it closes in, ink rolls up over the bottom of the print and smudges into the corners
+  if(uRoller>0.){float ry=uRoller*.32+.012*sin(vUv.x*38.+uTime*9.)+.008*sin(vUv.x*97.-uTime*13.);
+    float rm=smoothstep(ry+.012,ry-.012,vUv.y),band=step(.5,fract(vUv.y*26.+uTime*3.));
+    if(k==2)d=max(d,rm*(.86+.14*band));if(k==1)d=max(d,rm*.5*band);
+    d+=(k==2?.45:.2)*min(uRoller,1.)*smoothstep(.35,.62,length((vUv-.5)*vec2(1.,.8)));}
   // bold shapes: push densities toward clean paper and solid ink, leaving grain for the tints between
   d=mix(d,smoothstep(.1,.86,d),max(uTone,.85*ob));
   // grain strength: 0 prints a flat tint, 1 is pure stochastic grain (Grain Touch)
@@ -297,7 +311,7 @@ export class PrintPass{
       uMis0:V(new THREE.Vector2()),uMis1:V(new THREE.Vector2()),uMis2:V(new THREE.Vector2()),
       uInk0:V(new THREE.Vector3(1,.9,0)),uInk1:V(new THREE.Vector3(1,.3,.7)),uInk2:V(new THREE.Vector3(0,.4,.75)),uPaper:V(new THREE.Vector3(.95,.93,.89)),
       uNear:V(.15),uFar:V(2600),uDepthDrift:V(.6),uGrain:V(1),uGrainAmt:V(.6),uInkAmt:V(1),uSoft:V(.1),uOutline:V(.85),uThick:V(1),uWobble:V(1.5),
-      uDefects:V(.5),uDots:V(0),uSeed:V(0),uDpr:V(1),uShaft:V(0),uTone:V(.55),uHatch:V(.6),uDeckle:V(1)};
+      uDefects:V(.5),uDots:V(0),uSeed:V(0),uDpr:V(1),uShaft:V(0),uTone:V(.55),uHatch:V(.6),uDeckle:V(1),uRoller:V(0),uTime:V(0)};
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({uniforms:this.u,depthTest:false,depthWrite:false,
       vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,fragmentShader:POST_FRAG}));
     this.quad.frustumCulled=false;

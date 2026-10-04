@@ -56,6 +56,20 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 #lab:not(.hide)~#labBtn{display:none}
 /* HUD: distance printed in the corner of the image, a sheet banner on entering a region */
 #hud{position:absolute;left:14px;top:10px;font:900 30px/1 var(--stencil);letter-spacing:.06em;color:var(--key);mix-blend-mode:multiply;pointer-events:none}
+#ink{position:absolute;left:15px;top:44px;font:900 17px/1 var(--stencil);letter-spacing:.1em;color:var(--key);mix-blend-mode:multiply;pointer-events:none}
+/* the focus meter: fills with ink drops; when it's full, F (or a tap on it) spends it */
+#focus{position:absolute;left:14px;top:66px;width:132px;height:20px;border:2px solid var(--key);background:var(--paper);cursor:pointer;touch-action:none;overflow:hidden}
+#focus::before{content:"";position:absolute;inset:0;width:var(--fill,0%);background:repeating-linear-gradient(-45deg,var(--key) 0 5px,var(--mid) 5px 9px);transition:width .2s}
+#focus::after{content:"FOCUS";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:900 12px/1 var(--stencil);letter-spacing:.2em;color:var(--key);mix-blend-mode:multiply}
+#focus.ready{animation:pulse 1s ease-in-out infinite}#focus.ready::after{content:"F · FOCUS";color:var(--paper);mix-blend-mode:normal}
+#focus.on::after{content:"";}#focus.hide{display:none}
+@keyframes pulse{50%{transform:scale(1.06)}}
+@media (hover:none){#focus.ready::after{content:"TAP · FOCUS"}}
+#card{max-height:94%;overflow:auto}
+#card .cols{display:flex;gap:22px;align-items:center;text-align:center}#card .cols>div:first-child{min-width:230px}
+#card .pc{display:block;width:250px;max-width:40vw;margin:0 auto 6px;border:1px solid color-mix(in srgb,var(--key) 40%,transparent);box-shadow:2px 3px 0 color-mix(in srgb,var(--key) 25%,transparent)}
+@media (max-width:640px){#card .cols{flex-direction:column;gap:8px}#card .pc{width:220px;max-width:70vw}#card h1{font-size:34px}#card .big{font-size:42px}}
+#card button.save{font:900 13px/1 var(--stencil);letter-spacing:.12em;color:var(--key);background:transparent;border:2px solid var(--key);padding:6px 10px;cursor:pointer;margin-top:6px}
 #toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-8px) rotate(-1.5deg);opacity:0;transition:opacity .5s,transform .5s;pointer-events:none;
   background:var(--paper) var(--grain);border:2px solid var(--key);padding:8px 16px 6px;text-align:center;color:var(--key)}
 #toast.show{opacity:1;transform:translate(-50%,0) rotate(-1.5deg)}
@@ -86,7 +100,7 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 <div id="bar"></div>
 <div id="frame">
   <canvas id="c"></canvas>
-  <div id="hud"></div><div id="toast"></div><div id="fork"></div><div id="card"></div>
+  <div id="hud"></div><div id="ink"></div><div id="focus" class="hide"></div><div id="toast"></div><div id="fork"></div><div id="card"></div>
   <i class="crop tl"></i><i class="crop tr"></i><i class="crop bl"></i><i class="crop br"></i><i class="reg"></i><i class="reg b"></i>
 </div>
 <div id="slug"><span id="sheet"></span><span class="hint">← → lanes · ↑ jump · hold ↓ duck · p pause · l lab</span><span>RUN <span id="dist">0</span> M</span></div>

@@ -11,8 +11,11 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 - **First person**, with the printed sheet border (crop marks, slug line, colour bar) fixed on
   screen. That frame doubles as the comfort reference point.
 - **3 soft lanes** (smooth glide between them), jump, slide. Arrows / A-D / swipe.
-- **The Drum** is the chaser: a giant inked roller. One stumble brings it close (edges smudge,
-  plates shake); a second within a few seconds and you get printed.
+- **The roller** (built M3) chases you: a giant ink roller. A late answer is a *stumble*, not a crash:
+  jumping too low over a log or tumbleweed, ducking while still in the air, or changing lane away from a rock
+  in the last ~0.16 s. You slow down and the roller rolls ink up over the bottom of the print and smudges the
+  corners, falling back over 6 s. Stumble again inside that window and it catches you: the screen fills with
+  ink. Not answering at all is still a crash.
 - **Six regions, ~1.5 km each, blending over ~400 m**, the inks crossfading with them. Each has a twist:
   | Region | Inks | Twist |
   |---|---|---|
@@ -30,9 +33,13 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
   No hard 90° corners: they'd fold the terrain and are rough on comfort in first person.
 - **Plain words on screen** (user, 2026-10-03): region names and km, "RUN OVER", no print jargon in the HUD.
   The print vocabulary stays in the look itself and in the lab.
-- **Ink drops** in the three inks fill one power meter. v1 power: *Clean Proof* (perfect register,
-  slight slow-mo, drops fly to you).
-- **Death** holds a clean-proof frame, then prints the moment as a postcard (seed, distance, run no.).
+- **Ink drops** (built M3) in the region's three inks: trails in the lanes, arcs over jumps, a line through
+  the open lane of a rock pair, low ones under branches, lines down both fork branches. 45 fill the meter.
+- **Focus** (the power, built M3): F, or tap the meter. 6 s of 0.7× time, everything in perfect register,
+  drops within 9 m fly to you, and the roller drops back.
+- **The end of a run** holds a clean-register frame, then the card offers a **postcard**: that frame printed
+  on paper with the region in big mid-ink letters, distance, ink, cause, run number and date. Save postcard
+  (or S) downloads it, or opens the share sheet on phones.
 - **Daily seed** so everyone can run the same track.
 - No shop or currency in v1.
 
@@ -96,7 +103,7 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 - **M0 Look lab:** the rolling path through all three regions, the full print pass, a slow run, sliders. The vibe test.
 - **M1** Core run: lanes, jump, slide, obstacles, death and restart. **Done.**
 - **M2** Forks that pick the next region, three new regions, a twist per region, a steeper curve. **Done.**
-- **M3** The drum and stumbling, ink drops, the power, score and the postcard.
+- **M3** The roller and stumbling, ink drops, focus, and the postcard. **Done.**
 - **M4** Difficulty tuning, daily seed, audio, comfort settings (FOV, bob), phone controls.
 - **M5** Ship: build script, new itch page, GitHub Pages.
 
@@ -106,6 +113,7 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 - `src/world.js`: the path, regions, terrain chunks, plants and the far skylines.
 - `src/main.js`: game states, the runner, input, HUD and cards, the loop, the lab panel.
 - `src/air.js`: leaves, motes and birds.
+- `src/postcard.js`: the end-of-run postcard.
 - `lib/`: three.js r180 (MIT), vendored so it works offline and on itch.
 - `riso.js`: copied from Riso Rider (ink and paper names).
 
