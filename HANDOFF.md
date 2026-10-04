@@ -36,7 +36,11 @@ but chose to ship these for now.
 - Code: https://github.com/Tbone94/Riso-Runner (public, pushed over SSH). Play/install: https://tbone94.github.io/Riso-Runner/
   (GitHub Pages from `main`, root; pushes to `main` redeploy in about a minute). Bump `VERSION` in `sw.js` when shipping
   so installed copies pick up the update.
-- itch: not up yet. The zip is built (`tools/itch-build.sh`); the owner makes the new project page.
+- itch: https://gambo7592.itch.io/riso-runner (edit: itch.io/game/edit/5100840), built 2026-10-04 as a **Draft**, same
+  setup as Riso Rider: HTML 960×600, mobile friendly, fullscreen, Action, 10 tags, AI disclosure (all four), comments,
+  blue/paper theme with banner. The owner flips it to Public. Kit in `promo/itch/` (GIFs, shots, cover, banner, page.md
+  with the page text and devlog/Reddit drafts), rendered by `?trailer#kit` + `tools/gifs.py`.
+- Trailer: `promo/trailer/riso-runner-trailer.mp4` (38 s, 1080p60) from `index.html?trailer#render`; receiver on 5198.
 
 ## Before shipping (M5)
 - `tools/itch-build.sh` makes `promo/itch/riso-runner-<stamp>.zip` (strips the service worker). Make a **new** itch page
