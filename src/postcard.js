@@ -5,7 +5,7 @@ const STENCIL='"Big Shoulders Stencil Display", Impact, sans-serif',MONO='"Cutiv
 function rng(seed){let s=(Math.imul(seed|0,2654435761)>>>0)||1;return()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296;};}
 
 // snap: a canvas of the frame; inks: [light, mid, key] as #hex; paper: #hex
-export function postcard({snap,region,metres,ink,runNo,best,inks,paper,why}){
+export function postcard({snap,region,metres,finds,runNo,best,inks,paper,why}){
   const W=1500,H=1000,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),r=rng(runNo*31+metres);
   x.fillStyle=paper;x.fillRect(0,0,W,H);
   // paper fibre: faint specks of dark and light
@@ -30,9 +30,9 @@ export function postcard({snap,region,metres,ink,runNo,best,inks,paper,why}){
   x.font=`26px ${MONO}`;x.fillText(`run ${runNo}`,CX,232);
   x.fillRect(CX,262,350,3);
   x.font=`900 136px ${STENCIL}`;x.fillText(`${metres}`,CX,410);x.font=`900 44px ${STENCIL}`;x.fillText('METRES',CX,462);
-  x.font=`28px ${MONO}`;x.fillText(`${ink} ink gathered`,CX,520);
-  if(why)x.fillText(why,CX,560);
-  x.fillText(metres>=best?'a new best!':`best: ${best} m`,CX,600);
+  x.font=`26px ${MONO}`;let ly=516;for(const line of finds){x.fillText(line,CX,ly);ly+=36;}
+  if(why){x.fillText(why,CX,ly);ly+=36;}
+  x.fillText(metres>=best?'a new best!':`best: ${best} m`,CX,ly);
   // the three inks, overprinted like a colour bar
   x.globalCompositeOperation='multiply';
   inks.forEach((h,i)=>{x.fillStyle=h;x.beginPath();x.arc(CX+40+i*52,690,38,0,Math.PI*2);x.fill();});

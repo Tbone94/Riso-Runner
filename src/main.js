@@ -4,7 +4,7 @@
 // States: title → run → dead → run …  The runner lives in path space (s along, u across, y up).
 import * as THREE from 'three';
 import {inkMaterial,skyMaterial,signMaterial,PrintPass,hex3} from './print.js';
-import {World,regionAt,route,REGIONS,REGION_INFO,LEG,BLEND,LANE,START,FORK_LEN,forkAt,speedAt,iceAt} from './world.js';
+import {World,regionAt,route,REGIONS,REGION_INFO,FINDS,findKind,LEG,BLEND,LANE,START,FORK_LEN,forkAt,speedAt,iceAt} from './world.js';
 import {Air} from './air.js';
 import {postcard} from './postcard.js';
 
@@ -75,11 +75,11 @@ const G=26,JUMP_V=8.8;
 const R={s:START,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0};
 let state='title',deadT=0,startS=START,runNo=store.get('run',0),best=store.get('best',0),shake=0,lastLeg=0,duckHeld=false;
 const FOCUS_DROPS=45,FOCUS_T=6,FOCUS_SLOW=.7;
-let runT=0,ink=0,meter=0,focusT=0,needSnap=false,snap=null,card_pc=null;
+let runT=0,got=[0,0,0,0,0,0],ink=0,meter=0,focusT=0,needSnap=false,snap=null,card_pc=null;
 function reset(){Object.assign(R,{s:startS,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0});lastLeg=regionAt(startS).leg;duckHeld=false;
-  runT=0;ink=0;meter=0;focusT=0;}
+  runT=0;got=[0,0,0,0,0,0];ink=0;meter=0;focusT=0;}
 function begin(){snap=null;card_pc=null;if(Object.keys(route.picks).length)route.reset(route.start);world.resetRun();reset();runNo++;store.set('run',runNo);state='run';hideCard();toast(regionAt(R.s));}
-function focus(){if(state!=='run'||meter<1||focusT>0)return;focusT=FOCUS_T;meter=0;toastText('FOCUS','time slows, ink comes to you');}
+function focus(){if(state!=='run'||meter<1||focusT>0)return;focusT=FOCUS_T;meter=0;toastText('FOCUS','time slows and pickups fly to you');}
 const events=[];   // crashes, for testing from the console
 function jump(){if(state!=='run')return;if(!R.air&&!world.gapAt(R.s)){R.vy=JUMP_V;R.air=true;}else R.bufJump=.15;}
 function duck(on){if(state!=='run'){duckHeld=false;return;}duckHeld=on;if(on&&R.air)R.vy=Math.min(R.vy,-16);}   // in the air, ducking drops you fast
@@ -106,8 +106,8 @@ function step(dt){
   R.duck=duckHeld&&!R.air;
   if(gap&&R.y<-.5){die('fell');return;}
   if(!S.god){const hit=world.collide(R.s,R.u,R.y,R.duck);if(hit){R.s=Math.min(R.s,hit.o.s-1.5);die(hit.k);return;}}   // stop just short, so you see what you hit
-  // ink drops; with focus, everything a few metres ahead flies to you
-  for(const d of world.pickup(R.s,R.u,R.y,R.duck,focusT>0?9:0)){world.collect(d,focusT>0,camera.position);ink++;meter=Math.min(1,meter+1/FOCUS_DROPS);}
+  // pickups (acorns, maple leaves, …); with focus, everything a few metres ahead flies to you
+  for(const d of world.pickup(R.s,R.u,R.y,R.duck,focusT>0?9:0)){world.collect(d,focusT>0?.24:.14);got[findKind(d)]++;ink++;meter=Math.min(1,meter+1/FOCUS_DROPS);}
   runT+=dt;focusT=Math.max(0,focusT-dt);
   const rg=regionAt(R.s);if(rg.leg!==lastLeg){lastLeg=rg.leg;toast(rg);}
   // the fork banner, while one is coming up
@@ -126,15 +126,18 @@ function showCard(kind,m,how,wasBest){
     ?`<h1>RISO RUNNER</h1><p class="sub">run as far as you can</p>
       <p class="keys">← → change lane · ↑ jump · hold ↓ to duck<br><span>on a phone: swipe (hold after swiping down to stay low)</span></p><p class="go">SPACE / TAP TO RUN</p>${best?`<p class="best">BEST ${pad(best)} M</p>`:''}`
     :`<div class="cols"><div><h1>RUN OVER</h1><p class="sub">run ${runNo} · ${WHY[how]||''}</p>
-      <p class="big">${pad(m)} M</p><p class="best">${ink} ink · ${wasBest?'NEW BEST':'best '+pad(best)+' m'}</p>
+      <p class="big">${pad(m)} M</p><p class="best">${ink} gathered · ${wasBest?'NEW BEST':'best '+pad(best)+' m'}</p>
       <p class="go">SPACE / TAP TO RUN AGAIN</p></div>
       <div><img class="pc" alt="Postcard of this run"><button class="save">SAVE POSTCARD</button></div></div>`;
   if(kind!=='title'&&needSnap){print.render(scene,camera);takeSnap();}
   if(kind!=='title'&&snap){const R2=regionAt(R.s),hex=[print.u.uInk0,print.u.uInk1,print.u.uInk2].map(x=>toHex(x.value));
-    card_pc=postcard({snap,region:REGION_INFO[R2.r].name,metres:m,ink,runNo,best,inks:hex,paper:PAPERS[S.paper],why:WHY[how]});
+    card_pc=postcard({snap,region:REGION_INFO[R2.r].name,metres:m,finds:foundLines(),runNo,best,inks:hex,paper:PAPERS[S.paper],why:WHY[how]});
     card.querySelector('.pc').src=card_pc.toDataURL('image/jpeg',.85);
     const b=card.querySelector('.save');b.addEventListener('pointerup',e=>{e.stopPropagation();savePostcard();});}
   card.classList.add('show');}
+// "12 maple leaves", "3 acorns": what this run gathered, most first (at most two lines)
+const named=(n,k)=>`${n} ${n===1?FINDS[k].one:FINDS[k].many}`;
+function foundLines(){const L=got.map((n,k)=>[n,k]).filter(a=>a[0]).sort((a,b)=>b[0]-a[0]).slice(0,2).map(([n,k])=>named(n,k)+' gathered');return L.length?L:['nothing gathered'];}
 // Copy the frame just drawn (it must be read before the browser presents it).
 function takeSnap(){needSnap=false;snap=document.createElement('canvas');snap.width=canvas.width;snap.height=canvas.height;snap.getContext('2d').drawImage(canvas,0,0);}
 // Save the postcard: the share sheet where there is one (phones), a download otherwise.
@@ -259,7 +262,7 @@ function frame(now){
   print.render(scene,camera);
   if(needSnap)takeSnap();   // the moment the run ended, for the postcard
   const dist=Math.floor(R.s-startS);hud.textContent=state==='title'?'':pad(dist)+' M';
-  inkEl.textContent=state==='title'?'':ink+' INK';
+  {const k=regionAt(R.s).r;inkEl.textContent=state==='title'?'':named(got[k],k).toUpperCase();}
   focusEl.style.setProperty('--fill',(focusT>0?focusT/FOCUS_T:meter)*100+'%');focusEl.classList.toggle('ready',meter>=1&&focusT<=0);focusEl.classList.toggle('on',focusT>0);
   focusEl.classList.toggle('hide',state==='title');
   fpsN++;fpsT+=dt;if(fpsT>.5){fpsEl.textContent=Math.round(fpsN/fpsT)+' fps';fpsN=0;fpsT=0;distEl.textContent=runNo+' · BEST '+pad(best);}

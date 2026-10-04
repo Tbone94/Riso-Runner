@@ -43,14 +43,14 @@ void main(){
     m=modelMatrix*instanceMatrix;
   #endif
   #ifdef USE_INSTANCING_COLOR
-    seed=instanceColor.r;reg=floor(instanceColor.g*8.+.5);ink=floor(instanceColor.b*4.+.5);
+    seed=instanceColor.r;reg=floor(instanceColor.g*8.+.5);ink=floor(instanceColor.b*8.+.5);
   #endif
-  // ink drops spin and bob
+  // pickups spin and bob (fireflies wander a little too)
   vec3 p=position;bool drop=abs(aId-21.)<.5;
   vec3 nl=normal;
   if(drop){float a=uTime*2.4+seed*6.;mat2 R=mat2(cos(a),-sin(a),sin(a),cos(a));p.xz=R*p.xz;nl.xz=R*nl.xz;}
   vec4 w=m*vec4(p,1.);
-  if(drop)w.y+=.09*sin(uTime*3.1+seed*20.);
+  if(drop){w.y+=.08*sin(uTime*3.1+seed*20.);if(ink>4.5){w.x+=.18*sin(uTime*1.7+seed*9.);w.z+=.18*cos(uTime*1.3+seed*7.);w.y+=.12*sin(uTime*2.3+seed*5.);}}
   // leaves, fronds and grass sway with height (geometry is built 1 unit tall); vines swing from the top
   float k=0.;
   if(abs(aId-3.)<.5||abs(aId-8.)<.5||abs(aId-14.)<.5||abs(aId-16.)<.5){k=max(position.y,0.);k*=k;}
@@ -135,9 +135,15 @@ void main(){
   }else if(id==18){                               // a stream (rippled key lines on mid), a dry chasm in the desert, ice in the snow
     float rip=smoothstep(.82,.9,fract(vUV.y*.9+sin(vUV.x*1.7+uTime*1.5)*.25+uTime*.15));
     L=vec3(.08,.35,.38)+vec3(0.,0.,.4)*rip;L=mix(L,vec3(.1,.3,.85),W[3]);L=mix(L,vec3(.3,.05,.1)+vec3(0.,0.,.3)*rip,W[4]);L=mix(L,vec3(0.,.45,.75),W[5]);S=L;lit=1.;deep=0.;
-  }else if(id==21){                               // an ink drop: solid ink, with a glint of bare paper
-    L=vInk<.5?vec3(.95,0.,0.):vInk<1.5?vec3(0.,.95,0.):vec3(0.,0.,.95);
-    L*=1.-.95*smoothstep(.75,.92,dot(N,normalize(vec3(-.45,.75,.5))));S=L;lit=1.;deep=0.;
+  }else if(id==21){                               // pickups: acorn, maple leaf, mango, turquoise, snowflake, firefly
+    int f=int(vInk+.5);bool glint=true;
+    if(f==0){bool cap=vH>.03;L=cap?vec3(.3,.3,.6):vec3(.8,.22,.1);S=cap?vec3(.15,.35,.85):vec3(.55,.4,.3);}
+    else if(f==1){L=vec3(.12,.85,.4);S=vec3(.05,.75,.7);glint=false;}
+    else if(f==2){bool leafy=vH>.17;L=leafy?vec3(.3,.8,.1):vec3(.85,.4,0.);S=leafy?vec3(.1,.8,.45):vec3(.55,.65,.15);}
+    else if(f==3){L=vec3(.3,0.,.6);S=vec3(.15,.05,.85);}
+    else if(f==4){L=vec3(.15,.45,.7);S=L;lit=1.;glint=false;}
+    else{L=vec3(.95,.05,0.);S=L;lit=1.;deep=0.;glint=false;}
+    if(glint){float g=smoothstep(.78,.93,dot(N,normalize(vec3(-.45,.75,.5))));L*=1.-.9*g;S*=1.-.9*g;}
   }else if(id==20){                               // a shadow pooled on the path under an obstacle, with a ragged edge
     vec2 q=vUV;float r=q.x*q.x+pow(abs(q.y),6.)+.25*(vnoise(vW.xz*2.3)-.5);if(r>1.)discard;
     L=vec3(0.);for(int i=0;i<6;i++)L+=W[i]*PS[i];L+=vec3(0.,.08,.32);S=L;lit=1.;deep=0.;}
@@ -154,7 +160,7 @@ void main(){
   float f=id>=6&&id<=7?fogK:1.-exp(-pow(dist/uFogDist,1.5));
   float oid=float(id);
   #ifdef OBSTACLE
-    if(id==21)f*=.2;else{f*=.35;d.z+=.1;d.x+=.4*lit*smoothstep(.2,.7,N.y);}   // a sunlit top in light ink over a dark body
+    f*=.35;d.z+=.1;d.x+=.4*lit*smoothstep(.2,.7,N.y);   // a sunlit top in light ink over a dark body
     oid+=${OBST}.;
   #endif
   d=mix(d,uFogInk,f);

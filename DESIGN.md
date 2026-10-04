@@ -30,10 +30,13 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
   No hard 90° corners: they'd fold the terrain and are rough on comfort in first person.
 - **Plain words on screen** (user, 2026-10-03): region names and km, "RUN OVER", no print jargon in the HUD.
   The print vocabulary stays in the look itself and in the lab.
-- **Ink drops** (built M3) in the region's three inks: trails in the lanes, arcs over jumps, a line through
-  the open lane of a rock pair, low ones under branches, lines down both fork branches. 45 fill the meter.
+- **Pickups**, one per region (user, 2026-10-03; replaced ink drops, which blocked the view): acorns,
+  maple leaves, mangoes, turquoise stones, snowflakes, fireflies. They sit low on the ground (below your line
+  of sight), print softly like scenery (never in the obstacles' flat solid style), are taken ~1.5 m early with
+  a quick pop, and come in short spaced trails: in lanes, arcs over jumps, through the open lane of a rock
+  pair, under branches, down fork branches. 45 fill the focus meter.
 - **Focus** (the power, built M3): F, or tap the meter. 6 s of 0.7× time, everything in perfect register,
-  drops within 9 m fly to you.
+  pickups within 9 m fly to you.
 - **The end of a run** holds a clean-register frame, then the card offers a **postcard**: that frame printed
   on paper with the region in big mid-ink letters, distance, ink, cause, run number and date. Save postcard
   (or S) downloads it, or opens the share sheet on phones.

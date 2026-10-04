@@ -82,15 +82,16 @@ export class Path{
 export class Obstacles{
   constructor(path){this.P=path;this.B=new Map();this.D=new Map();this.dropId=0;this.next=START+110;this.rnd=rng(4711);}
   // ink drops: {id, s, u, y (height above the path), k (which ink), branch (-1/1 on a fork branch)}
-  dropAt(s,u,y,k,branch=0){const c=Math.floor(s/CHUNK);if(!this.D.has(c))this.D.set(c,[]);this.D.get(c).push({id:this.dropId++,s,u,y,k,branch});}
-  trail(a,b,lane,k,y=1){for(let s=a;s<=b;s+=2.6)this.dropAt(s,lane*LANE,y,k);}
-  arc(c,lane,k){for(let i=-3;i<=3;i++){const x=i*1.15;this.dropAt(c+x,lane*LANE,1+1.3*Math.max(0,1-(x/3.8)**2),k);}}   // follows a jump over c
+  // pickups sit low on the ground (below your line of sight), in short, well-spaced trails
+  dropAt(s,u,y,branch=0){const c=Math.floor(s/CHUNK),id=this.dropId++;if(!this.D.has(c))this.D.set(c,[]);this.D.get(c).push({id,s,u,y,branch,seed:hash2(id,7,3)});}
+  trail(a,b,lane,y=.45){for(let s=a,n=0;s<=b&&n<5;s+=3.6,n++)this.dropAt(s,lane*LANE,y);}
+  arc(c,lane){for(let i=-2;i<=2;i++){const x=i*1.6;this.dropAt(c+x,lane*LANE,.45+1.2*Math.max(0,1-(x/3.8)**2));}}   // follows a jump over c
   dropsNear(s){return this.D.get(Math.floor(s/CHUNK))||[];}
   put(o,a,b){for(let k=Math.floor(a/CHUNK);k<=Math.floor(b/CHUNK);k++){if(!this.B.has(k))this.B.set(k,[]);this.B.get(k).push(o);}}
   // the end of the no-obstacle zone around a fork, if x is in one
   forkClear(x){const k=Math.floor((x-forkAt(0)+60)/LEG);if(k<0)return 0;const fs=forkAt(k);return x>fs-40&&x<fs+FORK_LEN+25?fs+FORK_LEN+25:0;}
   ensure(s){const r=this.rnd;while(this.next<s){let at=this.next;const fc=this.forkClear(at);
-      if(fc){const fs=fc-FORK_LEN-25,k=Math.floor(r()*3);for(const sd of[-1,1])for(let x=fs+22;x<=fs+FORK_LEN-22;x+=2.6)this.dropAt(x,0,1,k,sd);this.next=fc;continue;}   // a line of drops down both branches
+      if(fc){const fs=fc-FORK_LEN-25;for(const sd of[-1,1])for(let x=fs+22;x<=fs+FORK_LEN-22;x+=3.6)this.dropAt(x,0,.45,sd);this.next=fc;continue;}   // a line of drops down both branches
       const d=diffAt(at),v=speedAt(at);
       const W={log:1,branch:d>.03?.8:0,rock1:1.1,rock2:d>.12?.8:0,gap:d>.06?.5+.3*d:0};
       let tot=0;for(const k in W)tot+=W[k];let x=r()*tot,kind='log';for(const k in W)if((x-=W[k])<0){kind=k;break;}
@@ -104,11 +105,11 @@ export class Obstacles{
       else if(kind==='gap'&&d>1.1&&q<.25)follow('branch',.95);                                            // leap, then duck
       this.next=end+Math.max(v*1.15,(34-19*Math.min(d,1)-4*Math.max(0,d-1))*(.85+.4*r()));
       // drops: an arc over a jump, a line through the open lane, low ones under a branch, trails between
-      const ink=Math.floor(r()*3),q2=r(),ln=()=>Math.floor(r()*3)-1;
-      if((kind==='log'||kind==='gap')&&q2<.6)this.arc(o.s+o.len/2,ln(),ink);
-      else if(kind==='rock2'&&q2<.8)this.trail(o.s-6,o.s+o.len+3,o.mask.indexOf(0)-1,ink);
-      else if(kind==='branch'&&q2<.45)this.trail(o.s-2.6,o.s+o.len+2.6,ln(),ink,.55);
-      const ta=end+6,tb=Math.min(this.next-9,end+32);if(tb-ta>8&&r()<.6&&!this.forkClear(tb))this.trail(ta,tb,ln(),Math.floor(r()*3));}}
+      const q2=r(),ln=()=>Math.floor(r()*3)-1;
+      if((kind==='log'||kind==='gap')&&q2<.6)this.arc(o.s+o.len/2,ln());
+      else if(kind==='rock2'&&q2<.8)this.trail(o.s-7,o.s+o.len+3,o.mask.indexOf(0)-1);
+      else if(kind==='branch'&&q2<.45)this.trail(o.s-3.6,o.s+o.len+3.6,ln());
+      const ta=end+6,tb=Math.min(this.next-9,end+32);if(tb-ta>8&&r()<.6&&!this.forkClear(tb))this.trail(ta,tb,ln());}}
   make(kind,s,r,mod){const o={kind,s,seed:r(),seed2:r(),seed3:r(),mask:[1,1,1]};
     if(kind==='log')o.len=.9;
     else if(kind==='branch')o.len=.7;
@@ -128,6 +129,10 @@ export class Obstacles{
   near(s){return this.B.get(Math.floor(s/CHUNK))||[];}
   between(a,b){const out=new Set();for(let k=Math.floor(a/CHUNK);k<=Math.floor(b/CHUNK);k++)for(const o of this.B.get(k)||[])if(o.s>=a&&o.s<b)out.add(o);return[...out];}
 }
+// What a pickup is depends on the region it lies in (chosen like obstacle dressing, so borders mix).
+export const FINDS=[{one:'acorn',many:'acorns'},{one:'maple leaf',many:'maple leaves'},{one:'mango',many:'mangoes'},
+  {one:'turquoise stone',many:'turquoise stones'},{one:'snowflake',many:'snowflakes'},{one:'firefly',many:'fireflies'}];
+export function findKind(d){const w=regionAt(d.s).w;let x=d.seed,r=0;for(;r<5;r++)if((x-=w[r])<0)break;return r;}
 // A tumbleweed's lane at the moment you reach it, and where it is when you're d metres away.
 export const tumbleLane=o=>(Math.floor(o.seed3*3)-1)*LANE;
 const tumbleU=(o,d)=>tumbleLane(o)+((o.seed3*97)%1<.5?-1:1)*Math.max(-11,Math.min(11,d*.38));
@@ -242,8 +247,20 @@ function fallGeo(){const g=new THREE.CylinderGeometry(.3,.4,8.6,9,1);g.translate
   return merge([part(g,ID.TRUNK),blob(1.4,0,8.6,0,.8,0),blob(1.1,.9,7.9,.3,.8,1),blob(1,-.8,8.1,-.2,.8,2),blob(.9,.2,9.4,.1,.8,3)]);}
 // A tumbleweed: a loose ball of dry twigs, 1.1 m across, centred on its origin.
 // An ink drop: a little teardrop, ~0.47 m tall, centred near its middle.
-function dropGeo(){const c=new THREE.ConeGeometry(.17,.3,10,1,true);c.translate(0,.15,0);
-  return merge([part(new THREE.SphereGeometry(.17,10,6,0,Math.PI*2,Math.PI/2,Math.PI/2),ID.DROP,true),part(c,ID.DROP,true)]);}
+// Pickups, ~0.3–0.45 m across, centred near their middle (all share the DROP id; the shader colours them by kind).
+const F=ID.DROP,flat2=pts=>{const out=[];for(let i=1;i<pts.length-1;i++)out.push(0,0,0,...pts[i],0,...pts[i+1],0);return raw(out);};
+function acornGeo(){const nut=new THREE.SphereGeometry(.13,10,8);nut.scale(1,1.25,1);nut.translate(0,-.05,0);
+  return merge([part(nut,F,true),part(new THREE.SphereGeometry(.145,10,5,0,Math.PI*2,0,Math.PI/2).translate(0,.05,0),F,true),part(new THREE.CylinderGeometry(.016,.016,.07,5).translate(0,.2,0),F)]);}
+function mapleGeo(){const P=[0,0];for(let i=0;i<=10;i++){const a=Math.PI/2+i/10*Math.PI*2,r=i%2?.11:.24+.03*Math.cos(i*1.7);P.push(Math.cos(a)*r,Math.sin(a)*r);}
+  const pts=[];for(let i=0;i<P.length;i+=2)pts.push([P[i],P[i+1]]);const g=flat2(pts);return merge([part(g,F),part(new THREE.CylinderGeometry(.01,.01,.14,4).translate(0,-.26,0),F)]);}
+function mangoGeo(){const m=new THREE.SphereGeometry(.14,10,8);m.scale(1,1.3,.9);m.rotateZ(.3);
+  return merge([part(m,F,true),part(raw([0,.17,0,.12,.27,.02,.02,.3,0]),F)]);}
+function stoneGeo(){const g=new THREE.OctahedronGeometry(.17,0);g.scale(1,1.3,.8);return part(g,F);}
+function flakeGeo(){const P=[];for(let k=0;k<6;k++){const a=k/6*Math.PI*2,c=Math.cos(a),s2=Math.sin(a),px=-s2*.02,py=c*.02;
+    P.push(part(raw([px,py,0, c*.24+px,s2*.24+py,0, -px,-py,0, c*.24+px,s2*.24+py,0, c*.24-px,s2*.24-py,0, -px,-py,0]),F));
+    for(const sd of[-1,1]){const b=.14,ex=c*b,ey=s2*b,a2=a+sd*.7,tx=ex+Math.cos(a2)*.08,ty=ey+Math.sin(a2)*.08;P.push(part(raw([ex,ey,0,tx,ty,0,ex+px*.6,ey+py*.6,0]),F));}}
+  return merge(P);}
+function fireflyGeo(){return merge([part(new THREE.SphereGeometry(.09,8,6),F,true),part(raw([0,.04,0,-.2,.12,.03,-.04,.0,0]),F),part(raw([0,.04,0,.2,.12,.03,.04,0,0]),F)]);}
 const ZERO=new THREE.Matrix4().makeScale(0,0,0);
 function tumbleGeo(){const P=[];for(let i=0;i<18;i++){const a=new THREE.Vector3(R0()-.5,R0()-.5,R0()-.5).normalize().multiplyScalar(.62),b=new THREE.Vector3(R0()-.5,R0()-.5,R0()-.5).normalize().multiplyScalar(.62);P.push(stick(a.toArray(),b.toArray(),.045,ID.DRYGRASS));}
   P.push(part(new THREE.IcosahedronGeometry(.52,1),ID.DRYGRASS));return merge(P);}
@@ -289,7 +306,7 @@ export class World{
     this.og={log:[fLog,fLog,logGeo(ID.MOSS,ID.FROND),ledgeGeo(),fLog,fLog],branch:[fBranch,fBranch,branchGeo(ID.MOSS,ID.FROND,true),archGeo(),fBranch,fBranch],
       rock:[fRock,fRock,boulderGeo(ID.MOSS),boulderGeo(ID.STRATA),fRock,fRock],saguaro:saguaroGeo(),fall:fallGeo(),tumble:tumbleGeo(),
       gap:[bridgeGeo(ID.TRUNK),bridgeGeo(ID.TRUNK),bridgeGeo(ID.MOSS),cairnGeo(),bridgeGeo(ID.TRUNK),bridgeGeo(ID.TRUNK)],sign:signPostGeo()};
-    this.dropGeo=dropGeo();this.collected=new Set();this.flying=[];
+    this.findGeo=[acornGeo(),mapleGeo(),mangoGeo(),stoneGeo(),flakeGeo(),fireflyGeo()];this.collected=new Set();this.flying=[];
     this.rings=new THREE.Group();this.ringBio=null;
     this.far=new THREE.Mesh(ringGeo(1500,ID.MOUNTAIN),mat);this.near=new THREE.Mesh(ringGeo(900,ID.RIDGE),mat);
     const sample=f=>Float32Array.from({length:N_RING+1},(_,i)=>f(i/N_RING*Math.PI*2));
@@ -315,7 +332,7 @@ export class World{
         p.needsUpdate=uv.needsUpdate=true;}}
     // drops flying to the runner during focus
     {const fm=new THREE.Matrix4(),q=new THREE.Quaternion(),sc=new THREE.Vector3(),p=new THREE.Vector3();
-      for(const f of this.flying){f.t+=1/60/.24;p.copy(f.from).lerp(cam,Math.min(1,f.t*f.t));fm.compose(p,q,sc.setScalar(Math.max(.05,1-f.t*.7)));
+      for(const f of this.flying){f.t+=1/60/f.dur;p.copy(f.from).lerp(cam,Math.min(1,f.t*f.t));fm.compose(p,q,sc.setScalar(Math.max(.05,1-f.t*.7)));
         f.im.setMatrixAt(f.i,f.t>=1?ZERO:fm);f.im.instanceMatrix.needsUpdate=true;}
       this.flying=this.flying.filter(f=>f.t<1);}
     // moving obstacles: falling trees and tumbleweeds, posed by the runner's distance to them
@@ -333,15 +350,16 @@ export class World{
       if(k==='log'||k==='fall'){if(y<.68)return{o,k};continue;}
       if(k==='branch'&&y+(duck?.95:1.8)>=1.15)return{o,k};}
     return null;}
-  // drops the runner picks up this step: within reach, or (with focus) anything a few metres ahead
+  // pickups the runner gets this step: within reach (a little ahead, so the nearest never fills the view),
+  // or with focus anything a few metres ahead
   pickup(s,u,y,duck,magnet){const out=[],top=y+(duck?.95:1.8);
     for(const c of new Set([Math.floor((s-1)/CHUNK),Math.floor(s/CHUNK),Math.floor((s+magnet)/CHUNK)]))for(const d of this.obs.D.get(c)||[]){if(this.collected.has(d.id))continue;
       const du=d.branch?d.branch*(LANE+this.path.spread(d.s)):d.u;
-      if(magnet?d.s>s-1&&d.s<s+magnet:Math.abs(d.s-s)<.9&&Math.abs(du-u)<.9&&d.y>y-.25&&d.y<top+.25)out.push(d);}
+      if(magnet?d.s>s-1&&d.s<s+magnet:d.s>s-.9&&d.s<s+1.6&&Math.abs(du-u)<.9&&d.y>y-.25&&d.y<top+.25)out.push(d);}
     return out;}
-  collect(d,fly,target){this.collected.add(d.id);const c=this.chunks.get(Math.floor(d.s/CHUNK)),im=c&&c.userData.drops;if(!im)return;const i=im.userData.ids.get(d.id);if(i===undefined)return;
-    if(fly){const m=new THREE.Matrix4();im.getMatrixAt(i,m);this.flying.push({im,i,from:new THREE.Vector3().setFromMatrixPosition(m),t:0});}
-    else{im.setMatrixAt(i,ZERO);im.instanceMatrix.needsUpdate=true;}}
+  // a pickup taken: it pops toward you and is gone (dur: seconds; longer when focus pulls it in)
+  collect(d,dur){this.collected.add(d.id);const c=this.chunks.get(Math.floor(d.s/CHUNK)),h=c&&c.userData.drops.get(d.id);if(!h)return;
+    const m=new THREE.Matrix4();h.im.getMatrixAt(h.i,m);this.flying.push({im:h.im,i:h.i,from:new THREE.Vector3().setFromMatrixPosition(m),t:0,dur});}
   // a new run: every drop is back
   resetRun(){this.collected.clear();this.flying=[];this.rebuildAll();}
   gapAt(s){for(const o of this.obs.near(s))if(o.kind==='gap'&&s>o.s+.3&&s<o.s+o.len-.3)return o;return null;}
@@ -447,12 +465,15 @@ export class World{
           board.matrix.multiply(new THREE.Matrix4().makeTranslation(0,0,.08));board.userData.own=true;g.add(board);}
         shadow({s:fk.fs-.3,len:.6},-1.1,1.1,.5);}}
       if(sp.length){const n=sp.length/3,sm=new THREE.Mesh(built(sp,suv,sbio,sbio2,ID.SHADOW,new Array(n*3).fill(0).map((_,i)=>i%3===1?1:0)),this.mat);sm.userData.own=true;g.add(sm);}}
-    // ink drops, printed in their own ink (collected ones stay gone for the rest of the run)
-    {const D=this.obs.D.get(ci)||[];if(D.length){const im=new THREE.InstancedMesh(this.dropGeo,this.omat,D.length),q=new THREE.Quaternion(),one=new THREE.Vector3(1.25,1.25,1.25);
-      im.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(D.length*3),3);im.userData.ids=new Map();
-      D.forEach((d,i)=>{const u=d.branch?d.branch*(LANE+P.spread(d.s)):d.u,f=P.at(d.s,F);v.set(f.x+u*f.rx,P.height(d.s)+.06+d.y,f.z+u*f.rz);
-        im.setMatrixAt(i,this.collected.has(d.id)?ZERO:m4.compose(v,q,one));im.instanceColor.array.set([rnd(),regionAt(d.s).r/8,d.k/4],i*3);im.userData.ids.set(d.id,i);});
-      im.computeBoundingSphere();g.userData.drops=im;g.add(im);}}
+    // pickups, one kind per region, printed softly like the scenery (taken ones stay gone for the run)
+    g.userData.drops=new Map();
+    {const byKind=[[],[],[],[],[],[]];for(const d of this.obs.D.get(ci)||[])byKind[findKind(d)].push(d);
+      const q=new THREE.Quaternion(),one=new THREE.Vector3(1.35,1.35,1.35);
+      byKind.forEach((D,kind)=>{if(!D.length)return;const im=new THREE.InstancedMesh(this.findGeo[kind],this.mat,D.length);
+        im.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(D.length*3),3);
+        D.forEach((d,i)=>{const u=d.branch?d.branch*(LANE+P.spread(d.s)):d.u,f=P.at(d.s,F);v.set(f.x+u*f.rx,P.height(d.s)+.06+d.y,f.z+u*f.rz);
+          im.setMatrixAt(i,this.collected.has(d.id)?ZERO:m4.compose(v,q,one));im.instanceColor.array.set([rnd(),regionAt(d.s).r/8,kind/8],i*3);g.userData.drops.set(d.id,{im,i});});
+        im.computeBoundingSphere();g.add(im);});}
     return g;
   }
 }
