@@ -213,7 +213,7 @@ const POST_FRAG=`
 uniform sampler2D tDens,tDepth,tBlue;
 uniform vec2 uRes,uDensRes,uMis0,uMis1,uMis2,uSunUV;
 uniform vec3 uInk0,uInk1,uInk2,uPaper;
-uniform float uNear,uFar,uDepthDrift,uGrain,uGrainAmt,uInkAmt,uSoft,uOutline,uThick,uWobble,uDefects,uDots,uSeed,uDpr,uShaft,uTone,uHatch,uDeckle,uRoller,uTime;
+uniform float uNear,uFar,uDepthDrift,uGrain,uGrainAmt,uInkAmt,uSoft,uOutline,uThick,uWobble,uDefects,uDots,uSeed,uDpr,uShaft,uTone,uHatch,uDeckle;
 varying vec2 vUv;
 ${NOISE}
 float linZ(float d){float z=d*2.-1.;return 2.*uNear*uFar/(uFar+uNear-z*(uFar-uNear));}
@@ -271,11 +271,6 @@ vec3 plate(vec2 uv,vec2 fc,float dk,vec2 mis,int k,vec3 ink,float sh,float sky,f
   tire*=step(.55,fract(fc.y/uDpr/9.))*vnoise(vec2(tx*40.,fc.y/uDpr/120.));
   d*=uInkAmt*(1.-uDefects*.4*starve);
   if(k==2)d+=uDefects*.22*tire;
-  // the roller: as it closes in, ink rolls up over the bottom of the print and smudges into the corners
-  if(uRoller>0.){float ry=uRoller*.32+.012*sin(vUv.x*38.+uTime*9.)+.008*sin(vUv.x*97.-uTime*13.);
-    float rm=smoothstep(ry+.012,ry-.012,vUv.y),band=step(.5,fract(vUv.y*26.+uTime*3.));
-    if(k==2)d=max(d,rm*(.86+.14*band));if(k==1)d=max(d,rm*.5*band);
-    d+=(k==2?.45:.2)*min(uRoller,1.)*smoothstep(.35,.62,length((vUv-.5)*vec2(1.,.8)));}
   // bold shapes: push densities toward clean paper and solid ink, leaving grain for the tints between
   d=mix(d,smoothstep(.1,.86,d),max(uTone,.85*ob));
   // grain strength: 0 prints a flat tint, 1 is pure stochastic grain (Grain Touch)
@@ -311,7 +306,7 @@ export class PrintPass{
       uMis0:V(new THREE.Vector2()),uMis1:V(new THREE.Vector2()),uMis2:V(new THREE.Vector2()),
       uInk0:V(new THREE.Vector3(1,.9,0)),uInk1:V(new THREE.Vector3(1,.3,.7)),uInk2:V(new THREE.Vector3(0,.4,.75)),uPaper:V(new THREE.Vector3(.95,.93,.89)),
       uNear:V(.15),uFar:V(2600),uDepthDrift:V(.6),uGrain:V(1),uGrainAmt:V(.6),uInkAmt:V(1),uSoft:V(.1),uOutline:V(.85),uThick:V(1),uWobble:V(1.5),
-      uDefects:V(.5),uDots:V(0),uSeed:V(0),uDpr:V(1),uShaft:V(0),uTone:V(.55),uHatch:V(.6),uDeckle:V(1),uRoller:V(0),uTime:V(0)};
+      uDefects:V(.5),uDots:V(0),uSeed:V(0),uDpr:V(1),uShaft:V(0),uTone:V(.55),uHatch:V(.6),uDeckle:V(1)};
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({uniforms:this.u,depthTest:false,depthWrite:false,
       vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,fragmentShader:POST_FRAG}));
     this.quad.frustumCulled=false;

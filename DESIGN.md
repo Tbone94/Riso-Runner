@@ -11,11 +11,8 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 - **First person**, with the printed sheet border (crop marks, slug line, colour bar) fixed on
   screen. That frame doubles as the comfort reference point.
 - **3 soft lanes** (smooth glide between them), jump, slide. Arrows / A-D / swipe.
-- **The roller** (built M3) chases you: a giant ink roller. A late answer is a *stumble*, not a crash:
-  jumping too low over a log or tumbleweed, ducking while still in the air, or changing lane away from a rock
-  in the last ~0.16 s. You slow down and the roller rolls ink up over the bottom of the print and smudges the
-  corners, falling back over 6 s. Stumble again inside that window and it catches you: the screen fills with
-  ink. Not answering at all is still a crash.
+- **Any hit ends the run** (user, 2026-10-03). There's no chaser: the roller and its stumbles were built in
+  M3 and taken out at the user's request.
 - **Six regions, ~1.5 km each, blending over ~400 m**, the inks crossfading with them. Each has a twist:
   | Region | Inks | Twist |
   |---|---|---|
@@ -36,7 +33,7 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 - **Ink drops** (built M3) in the region's three inks: trails in the lanes, arcs over jumps, a line through
   the open lane of a rock pair, low ones under branches, lines down both fork branches. 45 fill the meter.
 - **Focus** (the power, built M3): F, or tap the meter. 6 s of 0.7× time, everything in perfect register,
-  drops within 9 m fly to you, and the roller drops back.
+  drops within 9 m fly to you.
 - **The end of a run** holds a clean-register frame, then the card offers a **postcard**: that frame printed
   on paper with the region in big mid-ink letters, distance, ink, cause, run number and date. Save postcard
   (or S) downloads it, or opens the share sheet on phones.
@@ -103,7 +100,7 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 - **M0 Look lab:** the rolling path through all three regions, the full print pass, a slow run, sliders. The vibe test.
 - **M1** Core run: lanes, jump, slide, obstacles, death and restart. **Done.**
 - **M2** Forks that pick the next region, three new regions, a twist per region, a steeper curve. **Done.**
-- **M3** The roller and stumbling, ink drops, focus, and the postcard. **Done.**
+- **M3** Ink drops, focus, and the postcard. **Done.** (The roller was built, then removed.)
 - **M4** Difficulty tuning, daily seed, audio, comfort settings (FOV, bob), phone controls.
 - **M5** Ship: build script, new itch page, GitHub Pages.
 

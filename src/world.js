@@ -326,16 +326,12 @@ export class World{
         d.mesh.matrix.copy(d.base).setPosition(f.x+u*f.rx,this.path.height(o.s)+.06+hop,f.z+u*f.rz).multiply(rz.makeRotationZ(roll));}}
   }
   // what the runner (at s, u, feet y above the path, ducking or not) is hitting, if anything
-  // What the runner is hitting. A late answer is a graze (you clip it, stumble, and the roller closes in):
-  // jumping but not high enough, ducking while still in the air, or changing lane away at the last instant.
-  // Not answering at all is a crash. ctx: {air, duckHeld, lane (target), laneT (seconds since the last lane change)}
-  collide(s,u,y,duck,ctx={}){const late=ctx.laneT<.16;
-    for(const o of this.obs.near(s)){if(o.kind==='gap'||s<o.s-.2||s>o.s+o.len+.1)continue;const k=this.obs.variant(o).kind;
-      if(k==='rock1'||k==='rock2'){let hit=false;for(let l=0;l<3;l++)if(o.mask[l]&&Math.abs(u-(l-1)*LANE)<.9)hit=true;
-        if(hit&&y<1.7)return{o,k,graze:late&&!o.mask[ctx.lane+1]};continue;}
-      if(k==='tumble'){const uT=tumbleLane(o);if(Math.abs(u-uT)<1&&y<.7)return{o,k,graze:!!ctx.air||late&&Math.abs(ctx.lane*LANE-uT)>1};continue;}
-      if(k==='log'||k==='fall'){if(y<.68)return{o,k,graze:!!ctx.air};continue;}
-      if(k==='branch'&&y+(duck?.95:1.8)>=1.15)return{o,k,graze:!!ctx.duckHeld};}
+  // What the runner (at s, u, feet y above the path, ducking or not) is hitting, if anything. Any hit ends the run.
+  collide(s,u,y,duck){for(const o of this.obs.near(s)){if(o.kind==='gap'||s<o.s-.2||s>o.s+o.len+.1)continue;const k=this.obs.variant(o).kind;
+      if(k==='rock1'||k==='rock2'){for(let l=0;l<3;l++)if(o.mask[l]&&Math.abs(u-(l-1)*LANE)<.9&&y<1.7)return{o,k};continue;}
+      if(k==='tumble'){if(Math.abs(u-tumbleLane(o))<1&&y<.7)return{o,k};continue;}
+      if(k==='log'||k==='fall'){if(y<.68)return{o,k};continue;}
+      if(k==='branch'&&y+(duck?.95:1.8)>=1.15)return{o,k};}
     return null;}
   // drops the runner picks up this step: within reach, or (with focus) anything a few metres ahead
   pickup(s,u,y,duck,magnet){const out=[],top=y+(duck?.95:1.8);
