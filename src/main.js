@@ -31,7 +31,11 @@ const REGION={
   snow:{inks:['Aqua','Medium Blue','Federal Blue'],fog:[.25,.05,.03],fogK:1.3,shaft:.3,sky:[.35,.12,.05],far:[.3,.25,.12],near:[.15,.55,.35],ringFog:[.35,.25],snow:160,strata:0,night:0,kasumi:.8},
   night:{inks:['Yellow','Violet','Federal Blue'],fog:[0,.3,.45],fogK:.45,shaft:0,sky:[0,.25,.75],far:[0,.45,.55],near:[0,.5,.7],ringFog:[.5,.35],snow:400,strata:0,night:1,kasumi:.5},
 };
-const RG=REGIONS.map(r=>REGION[r]),INK3=RG.map(g=>g.inks.map(n=>hex3(INKS[n])));
+const RG=REGIONS.map(r=>REGION[r]),INK3N=RG.map(g=>g.inks.map(n=>hex3(INKS[n])));
+// Colour-blind friendly inks: only the jungle changes (its yellow and green read as one olive with red-green colour
+// blindness; teal separates them by hue and lightness). Obstacles get bolder too (print.js uCvd).
+const INK3C=INK3N.map((s,r)=>r===2?['Yellow','Teal','Hunter Green'].map(n=>hex3(INKS[n])):s);
+let INK3=INK3N;
 const S={start:'Forest',preset:'By region',shafts:.7,paper:'Natural',fov:78,sun:-38,fog:150,god:false,
   tone:.55,hatch:.45,deckle:1,halo:1,grain:1.2,grainAmt:.6,ink:.9,soft:.12,mis:1.4,speedMis:.1,drift:.6,outline:.85,thick:1,wobble:1.4,defects:.5,dots:0,scale:.75,reprint:false};
 const CONTROLS=[
@@ -46,7 +50,7 @@ const CONTROLS=[
 ];
 const store0={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}}};
 // The player's settings: field of view, volume, calm mode (less print wobble, no shake) and quality.
-const SET=Object.assign({fov:78,sfx:.8,music:.5,muted:false,calm:false,quality:'auto'},store0.get('settings',{}));
+const SET=Object.assign({fov:78,sfx:.8,music:.5,muted:false,calm:false,cvd:false,quality:'auto'},store0.get('settings',{}));
 if('volume' in SET){SET.sfx=SET.volume;delete SET.volume;}   // settings saved before effects and music were split
 const store={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}},set(k,v){try{localStorage.setItem('rr.'+k,JSON.stringify(v));}catch{}}};
 
@@ -161,6 +165,7 @@ function showCard(kind,m,how,wasBest){prevCard=kind==='settings'?prevCard:kind;c
       <label class="set"><span>${level('Music',SET.music)}</span><input type="range" min="0" max="1" step=".05" value="${SET.music}" data-k="music"></label>
       <label class="set chk"><input type="checkbox" data-k="muted"${SET.muted?' checked':''}><span>All sound off (M)</span></label>
       <label class="set chk"><input type="checkbox" data-k="calm"${SET.calm?' checked':''}><span>Calm mode: steadier print, no shake</span></label>
+      <label class="set chk"><input type="checkbox" data-k="cvd"${SET.cvd?' checked':''}><span>Colour-blind friendly: bolder obstacles, clearer inks</span></label>
       <label class="set"><span>Quality</span><select data-k="quality">${['auto','high','low'].map(q=>`<option${q===SET.quality?' selected':''}>${q}</option>`).join('')}</select></label>
       <p class="btns"><button class="go" data-a="back">DONE</button></p>`;
   else{card.innerHTML=`<div class="cols"><div><h1>RUN OVER</h1><p class="sub">${mode==='daily'?"today's run":'run '+runNo} · ${WHY[how]||''}</p>
@@ -174,7 +179,7 @@ function showCard(kind,m,how,wasBest){prevCard=kind==='settings'?prevCard:kind;c
   card.classList.add('show');}
 function saveSettings(){store.set('settings',SET);}
 const level=(name,v)=>v>0?name:name+' · off';   // a volume slider all the way down reads as off
-function applySettings(){S.fov=SET.fov;fitFov();audio.setSfxVolume(SET.sfx);audio.setMusicVolume(SET.music);audio.setMuted(SET.muted);
+function applySettings(){S.fov=SET.fov;fitFov();INK3=SET.cvd?INK3C:INK3N;print.u.uCvd.value=SET.cvd?1:0;applyInks();audio.setSfxVolume(SET.sfx);audio.setMusicVolume(SET.music);audio.setMuted(SET.muted);
   if(SET.quality!=='auto'){S.scale=SET.quality==='low'?.55:.9;resize();}}
 card.addEventListener('input',e=>{const k=e.target.dataset.k;if(!k)return;SET[k]=e.target.type==='checkbox'?e.target.checked:e.target.type==='range'?+e.target.value:e.target.value;applySettings();saveSettings();
   if(k==='sfx'||k==='music')e.target.previousElementSibling.textContent=level(k==='sfx'?'Sound effects':'Music',SET[k]);});
@@ -283,12 +288,12 @@ const look=new THREE.Vector3(),sunP=new THREE.Vector3(),F={},A={},distEl=documen
 const mix6=(w,key,out)=>{if(typeof RG[0][key]==='number'){let v=0;for(let r=0;r<6;r++)v+=w[r]*RG[r][key];return v;}
   out.set(0,0,0);for(let r=0;r<6;r++)if(w[r]){const a=RG[r][key];out.x+=a[0]*w[r];out.y+=a[1]*w[r];if(out.isVector3)out.z+=a[2]*w[r];}return out;};
 function frame(now){
-  const dt=Math.min(.05,(now-last)/1000);last=now;
+  const dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;   // never negative (a clock that steps back would wreck the camera smoothing)
   const slow=focusT>0?FOCUS_SLOW:1;
   if(!paused){t+=dt*slow;if(state==='run')step(dt*slow);else if(state==='dead'){deadT+=dt;if(R.y<0&&R.y>-6){R.vy-=G*dt;R.y+=R.vy*dt;}}}
   const P=world.path,f=P.at(R.s,F),a=P.at(R.s+22,A),k=1-Math.exp(-6*dt);
   // camera: path height is smoothed (hills), the runner's own jump/duck is not
-  const py=P.height(R.s);pathY=pathY===null?py:pathY+(py-pathY)*k;
+  const py=P.height(R.s);pathY=pathY===null||!Number.isFinite(pathY)?py:pathY+(py-pathY)*k;
   R.eye+=((R.duck?.78:1.62)-R.eye)*(1-Math.exp(-22*dt));
   camera.position.set(f.x+R.u*f.rx,pathY+R.eye+R.y,f.z+R.u*f.rz);
   look.set(a.x+R.u*.5*a.rx,P.height(R.s+22)+1.45+R.y*.35,a.z+R.u*.5*a.rz);camera.lookAt(look);
@@ -309,7 +314,7 @@ function frame(now){
   // misregistration: a base drift plus more with speed; the key plate stays nearly registered.
   // A crash snaps every plate into register for a moment.
   proofT=Math.max(0,proofT-dt);
-  const sp=state==='run'?R.v:0,m=proofT>0||focusT>0?0:(S.mis+sp*S.speedMis)*(SET.calm?.3:1),u=print.u,tick=Math.floor(t*12),j=S.reprint?(i=>(Math.sin(tick*12.9898+i*78.233)*43758.5453%1)*.35):()=>0;
+  const sp=state==='run'?R.v:0,m=proofT>0||focusT>0?0:(S.mis+sp*S.speedMis)*(SET.calm?.3:1)*(SET.cvd?.4:1),u=print.u,tick=Math.floor(t*12),j=S.reprint?(i=>(Math.sin(tick*12.9898+i*78.233)*43758.5453%1)*.35):()=>0;
   u.uMis0.value.set(-.85*m+j(1)*m,.55*m+j(2)*m);u.uMis1.value.set(.75*m+j(3)*m,-.4*m+j(4)*m);u.uMis2.value.set(.08*m,.04*m);
   u.uSeed.value=S.reprint?(tick*.618034)%1:0;
   u.uGrain.value=S.grain;u.uGrainAmt.value=S.grainAmt;u.uInkAmt.value=S.ink;u.uSoft.value=S.soft;u.uDepthDrift.value=focusT>0?0:S.drift;u.uOutline.value=S.outline;u.uThick.value=S.thick;

@@ -58,6 +58,10 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
   under the HUD on phones, so it never covers the focus bar.
 - **Focus on touch screens** (user, 2026-10-04): a big round FOCUS button under the right thumb, shown only while focus
   is ready (the top bar still works too).
+- **Colour-blind friendly** (setting, user 2026-10-04): checked by simulating protan, deutan and tritan vision on a
+  frame per region (`tools/cvd.py`). Obstacles already read by lightness (darkest shape, paper edge); the setting makes
+  them solid dark ink with a thicker outline and a wider paper edge, steadies the inks (fewer false coloured edges), and
+  swaps the jungle's green mid ink for teal (its yellow and green collapse to one olive with red-green colour blindness).
 - **Phones fill the screen** (user, 2026-10-04): on touch screens and narrow windows the print runs edge to edge (no
   paper margins, crop marks, title or slug, no ragged plate edge); the HUD keeps clear of notches. Desktop keeps the sheet.
 - **Obstacles stand off the background** (user, 2026-10-04): a thicker dark outline plus a band of bare paper just

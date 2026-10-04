@@ -219,7 +219,7 @@ const POST_FRAG=`
 uniform sampler2D tDens,tDepth,tBlue;
 uniform vec2 uRes,uDensRes,uMis0,uMis1,uMis2,uSunUV;
 uniform vec3 uInk0,uInk1,uInk2,uPaper;
-uniform float uNear,uFar,uDepthDrift,uGrain,uGrainAmt,uInkAmt,uSoft,uOutline,uThick,uWobble,uDefects,uDots,uSeed,uDpr,uShaft,uTone,uHatch,uDeckle,uHalo;
+uniform float uNear,uFar,uDepthDrift,uGrain,uGrainAmt,uInkAmt,uSoft,uOutline,uThick,uWobble,uDefects,uDots,uSeed,uDpr,uShaft,uTone,uHatch,uDeckle,uHalo,uCvd;
 varying vec2 vUv;
 ${NOISE}
 float linZ(float d){float z=d*2.-1.;return 2.*uNear*uFar/(uFar+uNear-z*(uFar-uNear));}
@@ -243,7 +243,7 @@ float outline(vec2 uv){
   float o=max(ed,idd)*(1.-smoothstep(70.,260.,z));  // outlines fade with distance, as in Sable
   // obstacles: a second, wider ring that only counts where an obstacle meets anything else
   const float OB=${OBST}./64.;
-  vec2 t2=t*3.2;float b0=step(OB,a),bn=step(OB,texture2D(tDens,uv+vec2(0.,t2.y)).a),bs=step(OB,texture2D(tDens,uv-vec2(0.,t2.y)).a),
+  vec2 t2=t*(3.2+1.2*uCvd);float b0=step(OB,a),bn=step(OB,texture2D(tDens,uv+vec2(0.,t2.y)).a),bs=step(OB,texture2D(tDens,uv-vec2(0.,t2.y)).a),
     be=step(OB,texture2D(tDens,uv+vec2(t2.x,0.)).a),bw=step(OB,texture2D(tDens,uv-vec2(t2.x,0.)).a);
   float ob=max(max(abs(bn-b0),abs(bs-b0)),max(abs(be-b0),abs(bw-b0)));
   return max(o,ob*(1.-smoothstep(150.,380.,z)));
@@ -254,10 +254,10 @@ float halo(vec2 uv){
   if(uHalo<=0.)return 0.;
   const float OB=${OBST}./64.;
   if(texture2D(tDens,uv).a>=OB)return 0.;
-  vec2 t=uThick/uDensRes;float near=0.,far=0.;
+  vec2 t=uThick/uDensRes;float near=0.,far=0.,r0=3.+1.2*uCvd,r1=6.+3.*uCvd;   // colour-blind mode: a wider edge past a thicker outline
   for(int i=0;i<8;i++){vec2 d=vec2(cos(float(i)*.785398),sin(float(i)*.785398));
-    near=max(near,step(OB,texture2D(tDens,uv+d*t*3.).a));
-    vec2 q=uv+d*t*6.;
+    near=max(near,step(OB,texture2D(tDens,uv+d*t*r0).a));
+    vec2 q=uv+d*t*r1;
     if(texture2D(tDens,q).a>=OB)far=max(far,1.-smoothstep(150.,380.,linZ(texture2D(tDepth,q).r)));}
   return far*(1.-near)*uHalo;
 }
@@ -282,7 +282,7 @@ vec3 plate(vec2 uv,vec2 fc,float dk,vec2 mis,int k,vec3 ink,float sh,float sky,f
   vec2 o=mis*dk/uRes*uDpr;
   vec4 s=texture2D(tDens,uv+o);
   float d=k==0?s.r:k==1?s.g:s.b,ob=step(${OBST}./64.,s.a);   // obstacles print as flat, solid ink: no hatching, little grain
-  if(k==2)d=max(d,outline(uv+o)*uOutline);
+  if(k==2)d=max(max(d,outline(uv+o)*uOutline),.75*uCvd*ob);   // colour-blind mode: obstacles print as solid dark ink
   d=k==0?d+sh*.4:d*(1.-sh*.6);
   // press defects, fixed to the sheet: a starved patch on each drum, and the feed rollers' tire tracks
   float starve=smoothstep(.55,.85,vnoise(fc/uDpr/240.+float(k)*7.3));
@@ -307,7 +307,7 @@ void main(){
   vec2 q=fc/uDpr,R=uRes/uDpr;float ed=min(min(q.x,R.x-q.x),min(q.y,R.y-q.y)),along=q.x+q.y*1.7;
   float edge=mix(1.,smoothstep(0.,2.5,ed-1.5-5.*vnoise(vec2(along*.06,1.))-2.*vnoise(vec2(along*.4,3.))),uDeckle);
   vec3 col=plate(vUv,fc,dk,uMis0,0,uInk0,sh,sky,edge)*plate(vUv,fc,dk,uMis1,1,uInk1,sh,sky,edge)*plate(vUv,fc,dk,uMis2,2,uInk2,sh,sky,edge);
-  col=mix(col,vec3(1.),.9*halo(vUv));
+  col=mix(col,vec3(1.),(.9+.1*uCvd)*halo(vUv));
   vec2 p=fc/uDpr;
   float fibre=.965+.035*vnoise(p*vec2(.9,.14))+.015*(vnoise(p*.5)-.5);
   float speck=1.-.35*step(.9965,hash(floor(p*.7)))*uDefects;
@@ -326,7 +326,7 @@ export class PrintPass{
       uMis0:V(new THREE.Vector2()),uMis1:V(new THREE.Vector2()),uMis2:V(new THREE.Vector2()),
       uInk0:V(new THREE.Vector3(1,.9,0)),uInk1:V(new THREE.Vector3(1,.3,.7)),uInk2:V(new THREE.Vector3(0,.4,.75)),uPaper:V(new THREE.Vector3(.95,.93,.89)),
       uNear:V(.15),uFar:V(2600),uDepthDrift:V(.6),uGrain:V(1),uGrainAmt:V(.6),uInkAmt:V(1),uSoft:V(.1),uOutline:V(.85),uThick:V(1),uWobble:V(1.5),
-      uDefects:V(.5),uDots:V(0),uSeed:V(0),uDpr:V(1),uShaft:V(0),uTone:V(.55),uHatch:V(.6),uDeckle:V(1),uHalo:V(1)};
+      uDefects:V(.5),uDots:V(0),uSeed:V(0),uDpr:V(1),uShaft:V(0),uTone:V(.55),uHatch:V(.6),uDeckle:V(1),uHalo:V(1),uCvd:V(0)};
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({uniforms:this.u,depthTest:false,depthWrite:false,
       vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,fragmentShader:POST_FRAG}));
     this.quad.frustumCulled=false;
