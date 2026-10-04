@@ -1,7 +1,7 @@
 // sw.js — offline play. Everything the game needs is cached on install; afterwards it's served from the
 // cache, and a new version (bump VERSION when shipping) installs in the background and takes over on the
 // next launch. Saved bests live in localStorage, so updates never clear them.
-const VERSION='riso-runner-2';
+const VERSION='riso-runner-3';
 const FILES=['./','index.html','manifest.webmanifest','riso.js','lib/three.module.min.js','lib/three.core.min.js',
   'src/main.js','src/world.js','src/print.js','src/air.js','src/audio.js','src/postcard.js',
   'fonts/big-shoulders-stencil-display-latin.woff2','fonts/cutive-mono-latin.woff2',

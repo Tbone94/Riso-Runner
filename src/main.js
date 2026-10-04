@@ -33,12 +33,12 @@ const REGION={
 };
 const RG=REGIONS.map(r=>REGION[r]),INK3=RG.map(g=>g.inks.map(n=>hex3(INKS[n])));
 const S={start:'Forest',preset:'By region',shafts:.7,paper:'Natural',fov:78,sun:-38,fog:150,god:false,
-  tone:.55,hatch:.45,deckle:1,grain:1.2,grainAmt:.6,ink:.9,soft:.12,mis:1.4,speedMis:.1,drift:.6,outline:.85,thick:1,wobble:1.4,defects:.5,dots:0,scale:.75,reprint:false};
+  tone:.55,hatch:.45,deckle:1,halo:1,grain:1.2,grainAmt:.6,ink:.9,soft:.12,mis:1.4,speedMis:.1,drift:.6,outline:.85,thick:1,wobble:1.4,defects:.5,dots:0,scale:.75,reprint:false};
 const CONTROLS=[
   ['start','Start in',REGION_INFO.map(r=>r.name)],['god','Can\'t crash (for looking around)'],['preset','Inks',['By region',...Object.keys(PRESETS)]],['paper','Paper',Object.keys(PAPERS)],
   ['fov','Field of view',60,100,1],['sun','Sun direction',-180,180,1],['fog','Fog distance',60,320,5],['shafts','Light shafts',0,1.5,.05],
   '-',
-  ['tone','Bold shapes',0,1,.05],['hatch','Key plate hatching',0,1,.05],['deckle','Rough print edge',0,1,.05],
+  ['tone','Bold shapes',0,1,.05],['hatch','Key plate hatching',0,1,.05],['deckle','Rough print edge',0,1,.05],['halo','Paper edge round obstacles',0,1,.05],
   ['ink','Ink density',.3,1.4,.05],['grainAmt','Grain strength',0,1,.05],['grain','Grain size (px)',.5,3,.05],['soft','Grain softness',.02,.5,.01],['mis','Misregistration (px)',0,6,.1],['speedMis','… extra per m/s',0,.4,.01],
   ['drift','Far plates drift',0,1,.05],['outline','Key outlines',0,1,.05],['thick','Outline weight',.5,3,.1],['wobble','Outline wobble',0,4,.1],
   ['defects','Press defects',0,1,.05],['dots','Halftone (mid plate)',0,1,.05],['scale','Render scale',.4,1,.05],
@@ -76,6 +76,8 @@ function resize(){const r=frameEl.getBoundingClientRect(),dpr=Math.min(devicePix
   renderer.setPixelRatio(dpr);renderer.setSize(r.width,r.height,false);camera.aspect=r.width/r.height;fitFov();
   print.setSize(Math.round(r.width*dpr),Math.round(r.height*dpr),S.scale,dpr);}
 new ResizeObserver(resize).observe(frameEl);
+// Phones and touch screens: the print fills the screen (see the CSS), so it bleeds off the edges instead of stopping raggedly.
+const bleed=matchMedia('(pointer:coarse),(max-width:640px)'),fitBleed=()=>{S.deckle=bleed.matches?0:1;};fitBleed();bleed.addEventListener('change',fitBleed);
 
 // ---------- the runner ----------
 const G=26,JUMP_V=8.8;
@@ -304,7 +306,7 @@ function frame(now){
   u.uMis0.value.set(-.85*m+j(1)*m,.55*m+j(2)*m);u.uMis1.value.set(.75*m+j(3)*m,-.4*m+j(4)*m);u.uMis2.value.set(.08*m,.04*m);
   u.uSeed.value=S.reprint?(tick*.618034)%1:0;
   u.uGrain.value=S.grain;u.uGrainAmt.value=S.grainAmt;u.uInkAmt.value=S.ink;u.uSoft.value=S.soft;u.uDepthDrift.value=focusT>0?0:S.drift;u.uOutline.value=S.outline;u.uThick.value=S.thick;
-  u.uWobble.value=S.wobble;u.uDefects.value=S.defects;u.uDots.value=S.dots;u.uTone.value=S.tone;u.uHatch.value=S.hatch;u.uDeckle.value=S.deckle;
+  u.uWobble.value=S.wobble;u.uDefects.value=S.defects;u.uDots.value=S.dots;u.uTone.value=S.tone;u.uHatch.value=S.hatch;u.uDeckle.value=S.deckle;u.uHalo.value=S.halo;
   applyInks();
   print.render(scene,camera);
   if(needSnap)takeSnap();   // the moment the run ended, for the postcard

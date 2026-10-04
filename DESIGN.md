@@ -53,6 +53,10 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 - **Settings** (title and pause): field of view, volume, sound off, calm mode (steadier print, no shake),
   quality (auto drops the print resolution when the frame rate sags). The view widens on portrait screens so
   all three lanes fit.
+- **Phones fill the screen** (user, 2026-10-04): on touch screens and narrow windows the print runs edge to edge (no
+  paper margins, crop marks, title or slug, no ragged plate edge); the HUD keeps clear of notches. Desktop keeps the sheet.
+- **Obstacles stand off the background** (user, 2026-10-04): a thicker dark outline plus a band of bare paper just
+  outside it, like a sticker's edge (lab: "Paper edge round obstacles").
 - **Installable app**: manifest, riso-printed icons, full screen, an offline service worker (skipped on
   localhost unless `?sw`), an Install button where the browser offers one, and an Add to Home Screen hint on iOS.
 - No shop or currency in v1.

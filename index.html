@@ -112,6 +112,15 @@ body{background:var(--paper) var(--grain);color:var(--key);font:13px/1.35 var(--
 #pauseHud.hide{display:none}
 #card .best{margin:8px 0 0;font-size:12px;letter-spacing:.14em}
 @media (max-width:640px){:root{--m:16px}#slug .hint{display:none}#lab{width:auto;left:calc(var(--m) + 12px)}}
+/* phones and touch screens: the print fills the whole screen and the sheet's marks step aside; the HUD keeps clear of notches */
+@media (pointer:coarse),(max-width:640px){
+  #frame{inset:0}
+  #title,#bar,#slug,.crop,.reg{display:none}
+  #hud{left:calc(14px + var(--sl));top:calc(10px + var(--st))}
+  #ink{left:calc(15px + var(--sl));top:calc(44px + var(--st))}
+  #focus{left:calc(14px + var(--sl));top:calc(66px + var(--st))}
+  #pauseHud{right:calc(12px + var(--sr));top:calc(10px + var(--st))}
+}
 </style>
 </head>
 <body>
