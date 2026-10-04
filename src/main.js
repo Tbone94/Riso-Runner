@@ -72,7 +72,9 @@ const print=new PrintPass(renderer);
 
 // The vertical field of view, widened on tall (portrait) screens so all three lanes always fit across.
 function fitFov(){const minH=72*Math.PI/180,need=2*Math.atan(Math.tan(minH/2)/camera.aspect)*180/Math.PI;camera.fov=Math.min(110,Math.max(S.fov,need));camera.updateProjectionMatrix();}
-function resize(){const r=frameEl.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+// ?trailer: trailer/trailer.js drives the game frame by frame (no clock of its own) at one pixel per CSS pixel.
+const TRAILER=/[?&]trailer\b/.test(location.search);
+function resize(){const r=frameEl.getBoundingClientRect(),dpr=TRAILER?1:Math.min(devicePixelRatio||1,2);
   renderer.setPixelRatio(dpr);renderer.setSize(r.width,r.height,false);camera.aspect=r.width/r.height;fitFov();
   print.setSize(Math.round(r.width*dpr),Math.round(r.height*dpr),S.scale,dpr);}
 new ResizeObserver(resize).observe(frameEl);
@@ -321,8 +323,13 @@ function frame(now){
   if(SET.quality==='auto'&&state==='run'&&!paused&&!document.hidden){qT+=dt;qN++;if(qT>2.5){const fps=qN/qT;
     if(fps<46&&S.scale>.5){S.scale=Math.max(.5,S.scale-.1);resize();}else if(fps>58&&S.scale<.75){S.scale=Math.min(.75,S.scale+.05);resize();}qT=0;qN=0;}}
   fpsN++;fpsT+=dt;if(fpsT>.5){fpsEl.textContent=Math.round(fpsN/fpsT)+' fps';fpsN=0;fpsT=0;distEl.textContent=runNo+' · BEST '+pad(best);}
-  requestAnimationFrame(frame);
+  if(!TRAILER)requestAnimationFrame(frame);
 }
 window.RR={S,R,print,world,camera,scene,air,route,applyInks,applySun,begin,jump,duck,lane,focus,events,fill:()=>{meter=1;},get ink(){return ink;},get meter(){return meter;},get focusT(){return focusT;},
-  tick:dt=>{world.update(R.s,camera.position);if(state==='run')step(dt);},get state(){return state;},get paused(){return paused;}};   // for poking at it from the console
-requestAnimationFrame(frame);
+  tick:dt=>{world.update(R.s,camera.position);if(state==='run')step(dt);},get state(){return state;},get paused(){return paused;},
+  // for the trailer: draw one frame at time now (ms); start a shot in a region (every leg that region unless forks), at s, in a lane
+  frame,get postcard(){return card_pc;},resize,
+  shot({region=0,seed=1,s=START,lane:l=0,god=true,legs=true}={}){S.god=god;mode='endless';snap=null;card_pc=null;paused=false;hideCard();
+    route.reset(region);world.reseed(seed);if(legs){route.cache=Array(40).fill(region);route.version++;world.rebuildAll();}
+    reset();R.s=s;R.v=speedAt(s);R.lane=l;R.u=l*LANE;lastLeg=regionAt(s).leg;proofT=0;shake=0;state='run';}};   // for poking at it from the console
+if(TRAILER)import('../trailer/trailer.js');else requestAnimationFrame(frame);

@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    {"name": "riso-runner", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "5174"], "port": 5174}
+    {"name": "riso-runner", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "5174"], "port": 5174},
+    {"name": "trailer-receiver", "runtimeExecutable": "python3", "runtimeArgs": ["trailer/receiver.py", "promo/trailer"], "port": 5198}
   ]
 }

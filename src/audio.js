@@ -59,12 +59,17 @@ export function music(r,next,level=1,focus=false){
 }
 export const _debug=()=>({ctx,master,out,mbus,voices,loops,curR,man,sync0});   // for measuring from the console
 
+// The trailer's offline mix: play logged effects ({t, name, args}) into another context, each at its own time.
+let tOff=0;
+export function renderSfx(c,dest,log,play=sfx){const keep=[ctx,master,noiseBuf];ctx=c;master=dest;noiseBuf=null;
+  for(const e of log){tOff=e.t;play[e.name](...e.args);}[ctx,master,noiseBuf]=keep;tOff=0;}
+
 // a short tone with an envelope
-function tone(freq,dur,{type='sine',gain=.2,glide=0,at=0,attack=.005}={}){if(!ctx)return;const t=ctx.currentTime+at,o=ctx.createOscillator(),g=ctx.createGain();
+function tone(freq,dur,{type='sine',gain=.2,glide=0,at=0,attack=.005}={}){if(!ctx)return;const t=ctx.currentTime+tOff+at,o=ctx.createOscillator(),g=ctx.createGain();
   o.type=type;o.frequency.setValueAtTime(freq,t);if(glide)o.frequency.exponentialRampToValueAtTime(Math.max(30,freq*glide),t+dur);
   env(g,t,attack,gain,dur);o.connect(g);g.connect(master);o.start(t);o.stop(t+attack+dur+.05);}
 // a burst of filtered noise
-function hiss(dur,{freq=1200,q=1,type='bandpass',gain=.2,sweep=0,at=0,attack=.005}={}){if(!ctx)return;const t=ctx.currentTime+at,s=src(false),f=ctx.createBiquadFilter(),g=ctx.createGain();
+function hiss(dur,{freq=1200,q=1,type='bandpass',gain=.2,sweep=0,at=0,attack=.005}={}){if(!ctx)return;const t=ctx.currentTime+tOff+at,s=src(false),f=ctx.createBiquadFilter(),g=ctx.createGain();
   f.type=type;f.frequency.setValueAtTime(freq,t);if(sweep)f.frequency.exponentialRampToValueAtTime(freq*sweep,t+dur);f.Q.value=q;
   env(g,t,attack,gain,dur);s.connect(f);f.connect(g);g.connect(master);s.start(t,Math.random());s.stop(t+attack+dur+.05);}
 
