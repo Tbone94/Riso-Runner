@@ -22,25 +22,28 @@ export const OBST=24;
 // ---------- the ink material: one shader for every surface ----------
 // Each id has a lit and a shaded density triple; lighting picks between them in hard bands, a slow
 // world-space noise makes the ink uneven like a hand-inked block, and distance fogs toward the horizon ink.
-// Ground and path blend per vertex between regions (aBio = jungle, desert weights); the far plates and
-// the sky blend by the camera's region (uBio = forest, jungle, desert).
+// Ground and path blend per vertex between the six regions (forest, autumn, jungle, desert, snow, night);
+// plants and obstacles carry the region they belong to, for autumn leaves, snow caps and night.
+// The far plates and the sky take their inks from uniforms the game blends by the camera's region.
 // The obstacle variant shares every uniform; it fogs far less and inks a little heavier, so whatever you
 // have to answer stays readable from further off while the scenery behind it fades.
 export function inkMaterial(obstacle=false,shared=null){
   const m=new THREE.ShaderMaterial({defines:obstacle?{OBSTACLE:1}:{},
-    uniforms:shared||{uTime:{value:0},uSun:{value:new THREE.Vector3(0,1,0)},uFogDist:{value:150},uFogInk:{value:new THREE.Vector3(.4,.05,0)},uBio:{value:new THREE.Vector3(1,0,0)}},
+    uniforms:shared||{uTime:{value:0},uSun:{value:new THREE.Vector3(0,1,0)},uFogDist:{value:150},uFogInk:{value:new THREE.Vector3(.4,.05,0)},
+      uFarInk:{value:new THREE.Vector3(.18,.5,.12)},uNearInk:{value:new THREE.Vector3(.25,.62,.3)},uRingFog:{value:new THREE.Vector2(.4,.25)},uSnowLine:{value:400},uStrata:{value:0}},
     vertexShader:`
 attribute float aId;
-attribute vec2 aUV,aBio;
+attribute vec2 aUV;
+attribute vec3 aBio,aBio2;
 uniform float uTime;
-varying vec3 vN,vW;varying float vId,vSeed,vH;varying vec2 vUV,vBio;
+varying vec3 vN,vW,vBio,vBio2;varying float vId,vSeed,vH,vReg;varying vec2 vUV;
 void main(){
-  mat4 m=modelMatrix;float seed=0.;
+  mat4 m=modelMatrix;float seed=0.,reg=aBio2.z;
   #ifdef USE_INSTANCING
     m=modelMatrix*instanceMatrix;
   #endif
   #ifdef USE_INSTANCING_COLOR
-    seed=instanceColor.r;
+    seed=instanceColor.r;reg=floor(instanceColor.g*8.+.5);
   #endif
   vec4 w=m*vec4(position,1.);
   // leaves, fronds and grass sway with height (geometry is built 1 unit tall); vines swing from the top
@@ -48,60 +51,65 @@ void main(){
   if(abs(aId-3.)<.5||abs(aId-8.)<.5||abs(aId-14.)<.5||abs(aId-16.)<.5){k=max(position.y,0.);k*=k;}
   else if(abs(aId-10.)<.5){k=1.-position.y;k*=k*2.;}
   if(k>0.){w.x+=sin(uTime*1.3+seed*40.+w.z*.06)*.22*k;w.z+=cos(uTime*1.05+seed*31.+w.x*.05)*.14*k;}
-  vN=normalize(mat3(m)*normal);vW=w.xyz;vId=aId;vSeed=seed;vUV=aUV;vBio=aBio;vH=position.y;
+  vN=normalize(mat3(m)*normal);vW=w.xyz;vId=aId;vSeed=seed;vUV=aUV;vBio=aBio;vBio2=aBio2;vH=position.y;vReg=reg;
   gl_Position=projectionMatrix*viewMatrix*w;
 }`,
     fragmentShader:`
-uniform float uTime,uFogDist;uniform vec3 uSun,uFogInk,uBio;
-varying vec3 vN,vW;varying float vId,vSeed,vH;varying vec2 vUV,vBio;
+uniform float uTime,uFogDist,uSnowLine,uStrata;uniform vec3 uSun,uFogInk,uFarInk,uNearInk;uniform vec2 uRingFog;
+varying vec3 vN,vW,vBio,vBio2;varying float vId,vSeed,vH,vReg;varying vec2 vUV;
 ${NOISE}
+// per region: forest, autumn, jungle, desert, snow, night (light, mid, key)
+const vec3 GL[6]=vec3[6](vec3(.45,.17,0.),vec3(.5,.34,.02),vec3(.3,.37,.02),vec3(.48,.11,0.),vec3(.03,0.,0.),vec3(.05,.35,.25));   // ground, lit
+const vec3 GS[6]=vec3[6](vec3(.42,.44,.1),vec3(.35,.5,.25),vec3(.08,.5,.34),vec3(.34,.14,.22),vec3(.3,.05,.06),vec3(0.,.45,.55));  // ground, shade
+const vec3 PL[6]=vec3[6](vec3(.22,.03,0.),vec3(.3,.12,.02),vec3(.44,.1,.05),vec3(.26,.08,0.),vec3(.12,.03,.02),vec3(.1,.25,.2));   // path, lit
+const vec3 PS[6]=vec3[6](vec3(.28,.17,.05),vec3(.3,.3,.15),vec3(.14,.34,.44),vec3(.28,.18,.18),vec3(.35,.1,.1),vec3(.05,.35,.4)); // path, shade
+const float DAP[6]=float[6](.85,.9,1.,0.,.3,.3);                                                                                  // dappled shade
 // Arizona sandstone: bands of light, mid and mixed ink, wavering with height
 vec3 strata(float y,float x){float b=fract(y/7.+.35*vnoise(vec2(x*.015,y*.05)));
   return b<.3?vec3(.5,.42,0.):b<.55?vec3(.3,.78,.04):b<.75?vec3(.6,.22,0.):vec3(.28,.6,.14);}
 void main(){
   vec3 N=normalize(vN);if(!gl_FrontFacing)N=-N;
   float b=dot(N,uSun),lit=smoothstep(.02,.14,b),deep=smoothstep(-.12,-.45,b);
-  int id=int(vId+.5);
-  float jw=vBio.x,dw=vBio.y,fw=max(0.,1.-jw-dw);
+  int id=int(vId+.5),reg=int(vReg+.5);
+  float W[6];W[1]=vBio.x;W[2]=vBio.y;W[3]=vBio.z;W[4]=vBio2.x;W[5]=vBio2.y;W[0]=max(0.,1.-W[1]-W[2]-W[3]-W[4]-W[5]);
   vec3 L=vec3(.5,.2,0.),S=vec3(.5,.5,.1);       // (light, mid, key)
-  float fogK=1.,dapK=0.;
-  if(id==1){                                      // ground: meadow / jungle understory / sand
-    float t=vnoise(vW.xz*.21),dn=vnoise(vW.xz*.05);
-    L=fw*vec3(.45,.1+.15*t,0.)+jw*vec3(.3,.3+.14*t,.02)+dw*vec3(.48,.06+.1*dn,0.);
-    S=fw*vec3(.42,.44,.1)+jw*vec3(.08,.5,.34)+dw*vec3(.34,.14,.22);
-    dapK=.85*fw+jw;
-  }else if(id==2){                                // path: earth with studs / a plank boardwalk / red dirt
-    float u=vUV.y,s=vUV.x;
-    vec2 q=vec2((fract(s/1.6)-.5)*1.6,abs(u)-1.1);
-    float stud=(1.-smoothstep(.08,.12,length(q)))*(fw+.3*dw);
-    float kerb=smoothstep(3.0,3.25,abs(u));
-    float rut=smoothstep(.35,.2,abs(abs(u)-2.2))*.1*vnoise(vec2(s*.7,u*3.))*fw;
-    float seam=smoothstep(.86,.93,fract(s/.45))*jw;                  // gaps between planks
-    float woodg=(vnoise(vec2(s*2.2,u*9.))-.5)*.12*jw;                                   // grain along the boards
-    L=fw*vec3(.22,.03,0.)+jw*vec3(.44,.1,.05)+dw*vec3(.26,.08,0.);
-    S=fw*vec3(.28,.17,.05)+jw*vec3(.14,.34,.44)+dw*vec3(.28,.18,.18);
-    vec3 add=vec3(0.,rut+woodg,.5*stud+.75*kerb+.55*seam);L+=add;S+=add+vec3(0.,0.,.05*kerb);
-    dapK=.85*fw+jw;
-  }else if(id==3){L=vec3(.24,.6,.02);S=vec3(.1,.78,.34);
+  float fogK=1.,dapK=0.;bool dressedByRegion=false;
+  if(id==1||id==2){                               // ground and path, blended across regions
+    L=vec3(0.);S=vec3(0.);for(int i=0;i<6;i++){L+=W[i]*(id==1?GL[i]:PL[i]);S+=W[i]*(id==1?GS[i]:PS[i]);dapK+=W[i]*DAP[i];}
+    float t=vnoise(vW.xz*.21);
+    if(id==1){L.y+=.1*(t-.5)*(1.-W[4]);
+      float litter=smoothstep(.62,.7,vnoise(vW.xz*1.3))*W[1];L+=vec3(-.1,.2,.15)*litter;S+=vec3(0.,0.,.2)*litter;}   // autumn leaf litter
+    else{float u=vUV.y,s=vUV.x,fw=W[0]+W[1]+W[5],jw=W[2],dw=W[3];
+      vec2 q=vec2((fract(s/1.6)-.5)*1.6,abs(u)-1.1);
+      float stud=(1.-smoothstep(.08,.12,length(q)))*(fw+.3*dw+.3*W[4]);
+      float kerb=smoothstep(3.0,3.25,abs(u));
+      float rut=smoothstep(.35,.2,abs(abs(u)-2.2))*.1*vnoise(vec2(s*.7,u*3.))*fw;
+      float seam=smoothstep(.86,.93,fract(s/.45))*jw;                                   // gaps between boardwalk planks
+      float woodg=(vnoise(vec2(s*2.2,u*9.))-.5)*.12*jw;                                 // grain along the boards
+      vec3 add=vec3(0.,rut+woodg,.5*stud+.75*kerb+.55*seam);L+=add;S+=add+vec3(0.,0.,.05*kerb);
+      // ice: pale and glassy, with paper-white glints and fine key cracks
+      float ice=vBio2.z,glint=smoothstep(.8,.86,fract(s*.35+u*.6+.3*vnoise(vec2(s*.2,u))));
+      float crack=smoothstep(.97,1.,1.-abs(vnoise(vec2(s*.9,u*1.4))-.5)*2.)*.6;
+      vec3 I=vec3(.38,.04,.06)*(1.-glint)+vec3(0.,0.,crack);L=mix(L,I,ice);S=mix(S,I+vec3(0.,.04,.08),ice);dapK*=1.-ice;}
+  }else if(id==3){L=vec3(.24,.6,.02);S=vec3(.1,.78,.34);dressedByRegion=true;
     vec3 an=abs(N);vec2 pp=an.y>max(an.x,an.z)?vW.xz:an.x>an.z?vW.zy:vW.xy;   // pick the face's plane so the marks don't smear
     float mk=smoothstep(.7,.76,vnoise(pp*vec2(2.6,4.2)+vSeed*17.));
     L+=vec3(-.1,.18,.12)*mk;S+=vec3(0.,0.,.3)*mk;
-  }else if(id==4){L=vec3(.06,.3,.6);S=vec3(0.,.36,.86);
-  }else if(id==5){L=vec3(.32,.1,.28);S=vec3(.15,.22,.66);
-  }else if(id==6||id==7){                         // far plates: flat, graded like a woodblock bokashi, one skyline per region
-    float y=vUV.x,F=uBio.x,J=uBio.y,D=uBio.z;lit=1.;deep=0.;
-    if(id==6){
-      vec3 Lf=vec3(.18,.5,.12)*mix(.35,1.,smoothstep(0.,300.,y));if(y>vUV.y-12.*vnoise(vec2(vW.x*.02,vW.z*.02)))Lf=vec3(.03,.02,0.);   // snow is bare paper
-      vec3 Lj=vec3(.2,.42,.14)*mix(.4,1.,smoothstep(0.,200.,y));
-      vec3 Ld=strata(y*1.3,vW.x+vW.z)*.8*mix(.55,1.,smoothstep(0.,150.,y));
-      L=F*Lf+J*Lj+D*Ld;fogK=F*.4+J*.62+D*.32;
-    }else{
-      vec3 Lf=vec3(.25,.62,.3)*mix(.5,1.,smoothstep(0.,120.,y)),Lj=vec3(.16,.62,.38)*mix(.5,1.,smoothstep(0.,200.,y));
-      vec3 Ld=strata(y*2.,vW.x-vW.z)*mix(.6,1.,smoothstep(0.,90.,y));
-      L=F*Lf+J*Lj+D*Ld;fogK=F*.25+J*.5+D*.18;}
+    if(reg==1){float c=fract(vSeed*7.31+floor(vW.y*.4)*.37);                        // autumn: yellow, orange or red crowns
+      if(c<.33){L=vec3(.8,.12,0.);S=vec3(.55,.4,.15);}else if(c<.66){L=vec3(.35,.72,0.);S=vec3(.15,.78,.3);}else{L=vec3(.12,.7,.38);S=vec3(.05,.6,.72);}
+      L+=vec3(0.,.1,.1)*mk;S+=vec3(0.,0.,.2)*mk;}
+  }else if(id==4){L=vec3(.06,.3,.6);S=vec3(0.,.36,.86);dressedByRegion=true;
+  }else if(id==5){L=vec3(.32,.1,.28);S=vec3(.15,.22,.66);dressedByRegion=true;
+  }else if(id==6||id==7){                         // far plates: flat, graded like a woodblock bokashi, inks set per region
+    float y=vUV.x;lit=1.;deep=0.;
+    if(id==6){L=uFarInk*mix(.35,1.,smoothstep(0.,300.,y));L=mix(L,strata(y*1.3,vW.x+vW.z)*.8*mix(.55,1.,smoothstep(0.,150.,y)),uStrata);
+      if(y>uSnowLine-12.*vnoise(vec2(vW.x*.02,vW.z*.02)))L=vec3(.03,.02,0.);fogK=uRingFog.x;}   // snow is bare paper
+    else{L=uNearInk*mix(.5,1.,smoothstep(0.,120.,y));L=mix(L,strata(y*2.,vW.x-vW.z),uStrata);
+      if(y>uSnowLine*.45+10.*vnoise(vec2(vW.x*.03,vW.z*.03)))L=mix(L,vec3(.06,.02,0.),step(uSnowLine,250.));fogK=uRingFog.y;}
     S=L;
-  }else if(id==8){L=vec3(.3,.52,0.);S=vec3(.2,.66,.24);
-  }else if(id==9){L=vec3(.04,.04,.06);S=vec3(.1,.18,.3);
+  }else if(id==8){L=vec3(.3,.52,0.);S=vec3(.2,.66,.24);dressedByRegion=true;
+    if(reg==1){L=vec3(.55,.25,0.);S=vec3(.4,.35,.2);}
+  }else if(id==9){L=vec3(.04,.04,.06);S=vec3(.1,.18,.3);dressedByRegion=true;
     float mark=step(.82,vnoise(vec2(vH*26.,vSeed*50.+atan(N.x,N.z)*1.2)));L.z+=.8*mark;S.z+=.8*mark;
   }else if(id==10){L=vec3(.12,.62,.28);S=vec3(0.,.72,.6);
   }else if(id==11){                               // mossy trunk climbed by pothos
@@ -112,23 +120,25 @@ void main(){
     float rib=smoothstep(.35,.5,abs(fract(atan(N.z,N.x)*1.91)-.5));
     L=vec3(.58,.02,.34)+vec3(0.,0.,.25)*rib;S=vec3(.32,.06,.68)+vec3(0.,0.,.2)*rib;
   }else if(id==13){L=strata(vW.y,vW.x+vW.z);S=L*vec3(.55,.75,1.)+vec3(0.,0.,.42);
-  }else if(id==14){                               // jungle fronds: sunlit lime, deep green underneath, a darker midrib tone
+  }else if(id==14){                               // jungle fronds: sunlit lime, deep green underneath
     L=vec3(.52,.5,0.);S=vec3(.04,.74,.56);
     float v=vnoise(vW.xz*1.7+vW.y*.9);L.y+=.12*v;S.z+=.12*v;
   }else if(id==15){L=vec3(.42,.06,.22);S=vec3(.3,.1,.48);
   }else if(id==16){L=vec3(.5,.14,.04);S=vec3(.4,.24,.22);
   }else if(id==17){                               // palm trunk: ringed bark
     float ring=smoothstep(.55,.75,fract(vH*95.));L=vec3(.3,.3,.25)+vec3(0.,0.,.4)*ring;S=vec3(.15,.35,.6)+vec3(0.,0.,.3)*ring;
-  }else if(id==18){                               // a stream (rippled key lines on mid) or, in the desert, a dark dry chasm
+  }else if(id==18){                               // a stream (rippled key lines on mid), a dry chasm in the desert, ice in the snow
     float rip=smoothstep(.82,.9,fract(vUV.y*.9+sin(vUV.x*1.7+uTime*1.5)*.25+uTime*.15));
-    L=mix(vec3(.08,.35,.38)+vec3(0.,0.,.4)*rip,vec3(.1,.3,.85),dw);S=L;lit=1.;deep=0.;
+    L=vec3(.08,.35,.38)+vec3(0.,0.,.4)*rip;L=mix(L,vec3(.1,.3,.85),W[3]);L=mix(L,vec3(.3,.05,.1)+vec3(0.,0.,.3)*rip,W[4]);L=mix(L,vec3(0.,.45,.75),W[5]);S=L;lit=1.;deep=0.;
   }else if(id==20){                               // a shadow pooled on the path under an obstacle, with a ragged edge
     vec2 q=vUV;float r=q.x*q.x+pow(abs(q.y),6.)+.25*(vnoise(vW.xz*2.3)-.5);if(r>1.)discard;
-    L=fw*vec3(.28,.17,.05)+jw*vec3(.14,.34,.44)+dw*vec3(.28,.18,.18)+vec3(0.,.08,.32);S=L;lit=1.;deep=0.;}
+    L=vec3(0.);for(int i=0;i<6;i++)L+=W[i]*PS[i];L+=vec3(0.,.08,.32);S=L;lit=1.;deep=0.;}
   vec3 d=mix(S,L,lit);d.z+=deep*.16;
-  // dappled canopy shade on the ground and path near the tree line (none in the open desert)
-  if(id<=2){float near=1.-smoothstep(9.,40.,abs(vUV.y));
-    float lo=mix(.5,.34,jw);   // the jungle floor is mostly shade, with bright sun patches
+  if(dressedByRegion||id>=11&&id<=17){
+    if(reg==4)d=mix(d,vec3(.02,0.,.01),smoothstep(.3,.6,N.y)*(id==3||id==4||id==5||id==8||id==9?1.:0.));   // snow settles on every upturned face
+    if(reg==5)d=vec3(d.x*.2,d.y*.75+.12,d.z*.85+.22);}                                                // moonlit
+  // dappled canopy shade on the ground and path near the tree line
+  if(id<=2){float near=1.-smoothstep(9.,40.,abs(vUV.y)),lo=mix(.5,.34,W[2]);   // the jungle floor is mostly shade, with bright sun patches
     float dap=smoothstep(lo,lo+.12,vnoise(vW.xz*.12+vec2(sin(uTime*.4)*.06,cos(uTime*.31)*.05)));
     d=mix(d,S+vec3(0.,.04,.1),dap*near*dapK);}
   d*=.86+.28*vnoise(vW.xz*.07+vW.y*.05+vSeed*13.);   // uneven ink, like a hand-inked block
@@ -144,28 +154,35 @@ void main(){
   return m;
 }
 
+// Signboard faces: the text is drawn on a canvas and printed in the key ink on a light wooden board.
+// They count as obstacles for the print (flat ink, heavy outline).
+export function signMaterial(tex){return new THREE.ShaderMaterial({uniforms:{tex:{value:tex}},side:THREE.DoubleSide,
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`uniform sampler2D tex;varying vec2 vUv;void main(){float k=texture2D(tex,vUv).a;gl_FragColor=vec4(.3,.08,.08+.86*k,(${OBST}.+${ID.TRUNK}.+.5)/64.);}`});}
+
 // ---------- the sky: a split fountain with kasumi mist bands ----------
 export function skyMaterial(){
   return new THREE.ShaderMaterial({
-    uniforms:{uSun:{value:new THREE.Vector3(0,1,0)},uFogInk:{value:new THREE.Vector3(.4,.05,0)},uBio:{value:new THREE.Vector3(1,0,0)}},
+    uniforms:{uSun:{value:new THREE.Vector3(0,1,0)},uFogInk:{value:new THREE.Vector3(.4,.05,0)},uSkyTop:{value:new THREE.Vector3(.06,.42,0)},uNight:{value:0},uKasumi:{value:1}},
     depthWrite:false,depthTest:false,side:THREE.BackSide,
     vertexShader:`varying vec3 vDir;void main(){vDir=position;gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.);}`,
     fragmentShader:`
-uniform vec3 uSun,uFogInk,uBio;varying vec3 vDir;
+uniform vec3 uSun,uFogInk,uSkyTop;uniform float uNight,uKasumi;varying vec3 vDir;
 ${NOISE}
 void main(){
   vec3 dir=normalize(vDir);float y=dir.y;
-  // two inks on one roller: the top ink blending into the horizon ink, with uneven banding.
-  // Forest and jungle tops are mid ink; the desert sky is a thin key (blue).
+  // two inks on one roller: the top ink blending into the horizon ink, with uneven banding
   float band=(vnoise(vec2(y*26.,dir.x*.6+3.))-.5)*.14;
-  vec3 top=uBio.x*vec3(.06,.42,0.)+uBio.y*vec3(.1,.22,0.)+uBio.z*vec3(.04,0.,.34);
-  vec3 d=mix(uFogInk,top,clamp(smoothstep(.0,.6,y)+band,0.,1.));
-  // kasumi: long horizontal mist bands where the paper shows through (thin in the desert)
+  vec3 d=mix(uFogInk,uSkyTop,clamp(smoothstep(.0,.6,y)+band,0.,1.));
+  // kasumi: long horizontal mist bands where the paper shows through
   float m=smoothstep(.56,.68,vnoise(vec2((dir.x+dir.z*.7)*2.3,y*17.)))*(1.-smoothstep(.04,.42,y))*step(.015,y);
-  d*=1.-.9*m*(1.-.7*uBio.z);
-  // the sun: a flat disc of light ink
-  float sd=acos(clamp(dot(dir,uSun),-1.,1.));
-  d=mix(d,vec3(.95,.3,0.),1.-smoothstep(.068,.074,sd));
+  d*=1.-.9*m*uKasumi;
+  // the sun, a flat disc of light ink, or at night a paper-white moon with a thin ring
+  float sd=acos(clamp(dot(dir,uSun),-1.,1.)),disc=1.-smoothstep(.068,.074,sd);
+  d=mix(d,mix(vec3(.95,.3,0.),vec3(0.),uNight),disc);
+  d=mix(d,vec3(.7,d.y*.5,d.z*.4),uNight*(1.-smoothstep(.08,.1,sd))*(1.-disc)*.6);
+  // stars: specks of paper in the night sky
+  float st=step(.996,hash(floor(dir.xz/(y+.3)*260.)))*uNight*step(.05,y);d*=1.-st;
   if(y<0.)d=uFogInk;
   gl_FragColor=vec4(d,0.);
 }`});

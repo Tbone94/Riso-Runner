@@ -1,9 +1,10 @@
 // main.js — Riso Runner: the run itself, plus the look lab (L) for tuning the print.
-// The world drifts from forest to jungle to desert as you run, and the ink drums change with it.
+// Six regions (forest, autumn, jungle, desert, snow, night), each with its own inks and twist; near the
+// end of each one the path forks and the branch you take picks the next.
 // States: title → run → dead → run …  The runner lives in path space (s along, u across, y up).
 import * as THREE from 'three';
-import {inkMaterial,skyMaterial,PrintPass,hex3} from './print.js';
-import {World,regionAt,LEG,BLEND,LANE,START,speedAt} from './world.js';
+import {inkMaterial,skyMaterial,signMaterial,PrintPass,hex3} from './print.js';
+import {World,regionAt,route,REGIONS,REGION_INFO,LEG,BLEND,LANE,START,FORK_LEN,forkAt,speedAt,iceAt} from './world.js';
 import {Air} from './air.js';
 
 const {INKS,PAPERS}=window.Riso;
@@ -18,18 +19,21 @@ const PRESETS={
   'Sea glass':['Mint','Aqua','Teal'],
   'Moody':['Light Gray','Brick','Black'],
 };
-// each region's inks, horizon ink (fog), fog distance and how strongly light shafts show
+// Each region's inks, horizon ink (fog), fog distance, light shafts, sky top, far and near hills,
+// how much the hills fade, where snow starts on the peaks, sandstone strata, night, and mist bands.
 const REGION={
-  forest:{inks:PRESETS['Woodblock'],fog:[.4,.05,0],fogK:1,shaft:.45},
-  jungle:{inks:['Yellow','Green','Hunter Green'],fog:[.17,.04,0],fogK:.55,shaft:1.2},
-  desert:{inks:['Sunflower','Orange','Medium Blue'],fog:[.44,.1,0],fogK:1.8,shaft:.15},
+  forest:{inks:PRESETS['Woodblock'],fog:[.4,.05,0],fogK:1,shaft:.45,sky:[.06,.42,0],far:[.18,.5,.12],near:[.25,.62,.3],ringFog:[.4,.25],snow:400,strata:0,night:0,kasumi:1},
+  autumn:{inks:['Sunflower','Orange','Burgundy'],fog:[.42,.08,0],fogK:1.1,shaft:.7,sky:[.15,.05,.12],far:[.3,.25,.25],near:[.35,.55,.2],ringFog:[.4,.25],snow:9999,strata:0,night:0,kasumi:1},
+  jungle:{inks:['Yellow','Green','Hunter Green'],fog:[.17,.04,0],fogK:.4,shaft:1.2,sky:[.1,.22,0],far:[.2,.42,.14],near:[.16,.62,.38],ringFog:[.62,.5],snow:9999,strata:0,night:0,kasumi:1},
+  desert:{inks:['Sunflower','Orange','Medium Blue'],fog:[.44,.1,0],fogK:1.8,shaft:.15,sky:[.04,0,.34],far:[.45,.6,.05],near:[.5,.7,.15],ringFog:[.32,.18],snow:9999,strata:1,night:0,kasumi:.3},
+  snow:{inks:['Aqua','Medium Blue','Federal Blue'],fog:[.25,.05,.03],fogK:1.3,shaft:.3,sky:[.35,.12,.05],far:[.3,.25,.12],near:[.15,.55,.35],ringFog:[.35,.25],snow:160,strata:0,night:0,kasumi:.8},
+  night:{inks:['Yellow','Violet','Federal Blue'],fog:[0,.3,.45],fogK:.45,shaft:0,sky:[0,.25,.75],far:[0,.45,.55],near:[0,.5,.7],ringFog:[.5,.35],snow:400,strata:0,night:1,kasumi:.5},
 };
-const RK=['forest','jungle','desert'],INK3=RK.map(r=>REGION[r].inks.map(n=>hex3(INKS[n])));
-const JUMP={'Forest':START,'Forest → jungle':LEG-BLEND-150,'Jungle':LEG+300,'Jungle → desert':2*LEG-BLEND-150,'Desert':2*LEG+300,'Desert → forest':3*LEG-BLEND-150};
-const S={jump:'Forest',preset:'By region',shafts:.7,paper:'Natural',fov:78,sun:-38,fog:150,god:false,
+const RG=REGIONS.map(r=>REGION[r]),INK3=RG.map(g=>g.inks.map(n=>hex3(INKS[n])));
+const S={start:'Forest',preset:'By region',shafts:.7,paper:'Natural',fov:78,sun:-38,fog:150,god:false,
   tone:.55,hatch:.45,deckle:1,grain:1.2,grainAmt:.6,ink:.9,soft:.12,mis:1.4,speedMis:.1,drift:.6,outline:.85,thick:1,wobble:1.4,defects:.5,dots:0,scale:.75,reprint:false};
 const CONTROLS=[
-  ['jump','Go to',Object.keys(JUMP)],['god','Can\'t crash (for looking around)'],['preset','Inks',['By region',...Object.keys(PRESETS)]],['paper','Paper',Object.keys(PAPERS)],
+  ['start','Start in',REGION_INFO.map(r=>r.name)],['god','Can\'t crash (for looking around)'],['preset','Inks',['By region',...Object.keys(PRESETS)]],['paper','Paper',Object.keys(PAPERS)],
   ['fov','Field of view',60,100,1],['sun','Sun direction',-180,180,1],['fog','Fog distance',60,320,5],['shafts','Light shafts',0,1.5,.05],
   '-',
   ['tone','Bold shapes',0,1,.05],['hatch','Key plate hatching',0,1,.05],['deckle','Rough print edge',0,1,.05],
@@ -47,7 +51,17 @@ const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(S.fov,1,.15,260
 const mat=inkMaterial();mat.side=THREE.DoubleSide;
 const omat=inkMaterial(true,mat.uniforms);omat.side=THREE.DoubleSide;   // obstacles: same uniforms, less fog, heavier outline
 const sky=new THREE.Mesh(new THREE.SphereGeometry(2300,32,16),skyMaterial());sky.renderOrder=-1;sky.frustumCulled=false;scene.add(sky);
-const world=new World(scene,mat,omat),air=new Air(scene);
+// Signboards at a fork: "◀ SNOW / icy lanes" and "DESERT ▶ / tumbleweeds", drawn once per fork.
+const signs=new Map();
+function signMat(k,side){const key=route.version+':'+k+':'+side;if(signs.has(key))return signs.get(key);
+  const c=document.createElement('canvas');c.width=512;c.height=128;const x=c.getContext('2d'),info=REGION_INFO[route.options(k)[side]];
+  x.fillStyle='#000';x.textAlign='center';x.textBaseline='middle';
+  x.font='900 66px "Big Shoulders Stencil Display", Impact, sans-serif';x.fillText(side?info.name.toUpperCase()+'  ▶':'◀  '+info.name.toUpperCase(),256,50);
+  x.font='30px "Cutive Mono", monospace';x.fillText(info.twist||'easy going',256,104);
+  x.lineWidth=8;x.strokeRect(6,6,500,116);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.NoColorSpace;const m=signMaterial(t);signs.set(key,m);return m;}
+document.fonts?.load('900 66px "Big Shoulders Stencil Display"').then(()=>{signs.clear();world.rebuildAll();});
+const world=new World(scene,mat,omat,signMat),air=new Air(scene);
 const print=new PrintPass(renderer);
 
 function resize(){const r=frameEl.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
@@ -56,55 +70,73 @@ function resize(){const r=frameEl.getBoundingClientRect(),dpr=Math.min(devicePix
 new ResizeObserver(resize).observe(frameEl);
 
 // ---------- the runner ----------
-const G=26,JUMP_V=8.8,SLIDE_T=.75;
-const R={s:START,u:0,lane:0,y:0,vy:0,air:false,slide:0,v:0,eye:1.62,roll:0,bufJump:0,bufSlide:0};
-let state='title',deadT=0,startS=START,runNo=store.get('run',0),best=store.get('best',0),shake=0,lastSheet=1;
-function reset(){Object.assign(R,{s:startS,u:0,lane:0,y:0,vy:0,air:false,slide:0,v:0,eye:1.62,roll:0,bufJump:0,bufSlide:0});lastSheet=regionAt(startS).sheet;}
-function begin(){reset();runNo++;store.set('run',runNo);state='run';hideCard();toast(regionAt(R.s));}
-function jump(){if(state!=='run')return;if(!R.air&&!world.gapAt(R.s)){R.vy=JUMP_V;R.air=true;R.slide=0;}else R.bufJump=.15;}
-function slide(){if(state!=='run')return;if(R.air){R.vy=Math.min(R.vy,-16);R.bufSlide=.3;}else R.slide=SLIDE_T;}   // in the air: drop fast, then slide
-function lane(d){if(state!=='run')return;R.lane=Math.max(-1,Math.min(1,R.lane+d));}
-function die(how){state='dead';deadT=0;proofT=.55;shake=how==='fell'?0:1;
+const G=26,JUMP_V=8.8;
+const R={s:START,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0};
+let state='title',deadT=0,startS=START,runNo=store.get('run',0),best=store.get('best',0),shake=0,lastLeg=0,duckHeld=false;
+function reset(){Object.assign(R,{s:startS,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0});lastLeg=regionAt(startS).leg;duckHeld=false;}
+function begin(){if(Object.keys(route.picks).length){route.reset(route.start);world.rebuildAll();}reset();runNo++;store.set('run',runNo);state='run';hideCard();toast(regionAt(R.s));}
+function jump(){if(state!=='run')return;if(!R.air&&!world.gapAt(R.s)){R.vy=JUMP_V;R.air=true;}else R.bufJump=.15;}
+function duck(on){if(state!=='run'){duckHeld=false;return;}duckHeld=on;if(on&&R.air)R.vy=Math.min(R.vy,-16);}   // in the air, ducking drops you fast
+function lane(d){if(state!=='run'||R.branch)return;R.lane=Math.max(-1,Math.min(1,R.lane+d));}
+function die(how){state='dead';deadT=0;proofT=.55;shake=how==='fell'?0:1;duckHeld=false;
   const m=Math.floor(R.s-startS),wasBest=m>best;if(wasBest){best=m;store.set('best',best);}
   setTimeout(()=>{if(state==='dead')showCard('dead',m,how,wasBest);},650);}
 function step(dt){
   const target=speedAt(R.s);R.v=Math.min(target,R.v+target*dt*1.6);   // eases up to speed at the start of a run
   R.s+=R.v*dt;
-  R.u+=(R.lane*LANE-R.u)*(1-Math.exp(-16*dt));
-  R.bufJump=Math.max(0,R.bufJump-dt);R.bufSlide=Math.max(0,R.bufSlide-dt);R.slide=Math.max(0,R.slide-dt);
+  // the fork: whichever side lane you're in picks the branch, and with it the next region
+  const fk=world.path.fork(R.s);
+  if(fk&&R.s>=fk.fs&&!R.branch&&R.s<fk.fs+FORK_LEN){
+    if(R.lane===0&&!S.god){R.s=fk.fs-1.4;die('sign');return;}
+    R.branch=R.lane||1;route.choose(fk.k,R.branch<0?0:1);world.rebuildFrom(fk.k*LEG+LEG-BLEND);
+    const info=REGION_INFO[route.leg(fk.k+1)];forkBanner(`<b>${info.name.toUpperCase()} AHEAD</b><span>${info.twist||'easy going'}</span>`,true);}
+  if(R.branch&&!(fk&&R.s<fk.fs+FORK_LEN)){R.lane=R.branch;R.branch=0;}
+  const goal=R.branch?R.branch*(LANE+world.path.spread(R.s)):R.lane*LANE;
+  R.u+=(goal-R.u)*(1-Math.exp(-(R.branch?20:16-10*iceAt(R.s))*dt));           // on ice, changing lanes is slow and slippery
+  R.bufJump=Math.max(0,R.bufJump-dt);
   const gap=S.god?null:world.gapAt(R.s);
   if(R.air||R.y>0||gap){R.vy-=G*dt;R.y+=R.vy*dt;}
-  if(!gap&&R.y<=0){R.y=0;R.vy=0;if(R.air){R.air=false;if(R.bufSlide>0)R.slide=SLIDE_T;else if(R.bufJump>0)jump();}}
+  if(!gap&&R.y<=0){R.y=0;R.vy=0;if(R.air){R.air=false;if(R.bufJump>0&&!duckHeld)jump();}}
+  R.duck=duckHeld&&!R.air;
   if(gap&&R.y<-.5){die('fell');return;}
-  if(!S.god){const o=world.collide(R.s,R.u,R.y,R.slide>0);if(o){R.s=Math.min(R.s,o.s-1.5);die(o.kind);return;}}   // stop just short, so you see what you hit
-  const sh=regionAt(R.s);if(sh.sheet!==lastSheet){lastSheet=sh.sheet;toast(sh);}
+  if(!S.god){const hit=world.collide(R.s,R.u,R.y,R.duck);if(hit){R.s=Math.min(R.s,hit.o.s-1.5);die(hit.k);return;}}   // stop just short, so you see what you hit
+  const rg=regionAt(R.s);if(rg.leg!==lastLeg){lastLeg=rg.leg;toast(rg);}
+  // the fork banner, while one is coming up
+  const nk=Math.floor((R.s-forkAt(0)+200)/LEG),fs=forkAt(nk);
+  if(nk>=0&&R.s>fs-190&&R.s<fs){const[a,b]=route.options(nk).map(i=>REGION_INFO[i]);
+    forkBanner(`<b>FORK AHEAD</b><span class="${R.lane<0?'on':''}">◀ ${a.name}${a.twist?' · '+a.twist:''}</span><span class="${R.lane>0?'on':''}">${b.name}${b.twist?' · '+b.twist:''} ▶</span><i>pick a side lane</i>`);}
+  else if(!(fk&&R.s<fk.fs+40))forkBanner('');
 }
 
-// ---------- HUD, cards and toasts ----------
-const card=document.getElementById('card'),hud=document.getElementById('hud'),toastEl=document.getElementById('toast');
-const pad=n=>String(Math.max(0,n)).padStart(4,'0');
+// ---------- HUD, cards and banners ----------
+const card=document.getElementById('card'),hud=document.getElementById('hud'),toastEl=document.getElementById('toast'),forkEl=document.getElementById('fork');
+const pad=n=>String(Math.max(0,n)).padStart(4,'0'),km=m=>(m/1000).toFixed(1)+' km';
+const WHY={log:'tripped on a log',branch:'hit a low branch',rock1:'ran into a rock',rock2:'ran into a rock',fell:'fell in',sign:'ran into the signpost',fall:'hit a fallen tree',tumble:'hit a tumbleweed'};
 function showCard(kind,m,how,wasBest){
-  const why={log:'tripped on a log',branch:'hit a low branch',rock1:'ran into a rock',rock2:'ran into a rock',fell:'fell in'}[how]||'';
   card.innerHTML=kind==='title'
-    ?`<h1>RISO RUNNER</h1><p class="sub">a run through a risograph print</p>
-      <p class="keys">← → change lane · ↑ jump · ↓ slide<br><span>on a phone: swipe</span></p><p class="go">SPACE / TAP TO RUN</p>${best?`<p class="best">BEST ${pad(best)} M</p>`:''}`
-    :`<h1>MISPRINT</h1><p class="sub">run ${String(runNo).padStart(4,'0')} · ${why}</p>
+    ?`<h1>RISO RUNNER</h1><p class="sub">run as far as you can</p>
+      <p class="keys">← → change lane · ↑ jump · hold ↓ to duck<br><span>on a phone: swipe (hold after swiping down to stay low)</span></p><p class="go">SPACE / TAP TO RUN</p>${best?`<p class="best">BEST ${pad(best)} M</p>`:''}`
+    :`<h1>RUN OVER</h1><p class="sub">run ${runNo} · ${WHY[how]||''}</p>
       <p class="big">${pad(m)} M</p><p class="best">${wasBest?'NEW BEST':'BEST '+pad(best)+' M'}</p><p class="go">SPACE / TAP TO RUN AGAIN</p>`;
   card.classList.add('show');}
 function hideCard(){card.classList.remove('show');}
 let toastT=0;
-function toast(r){toastEl.innerHTML=`<b>SHEET ${String(r.sheet).padStart(2,'0')}</b><span>${r.name}</span>`;toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.classList.remove('show'),2600);}
+function toast(r){const info=REGION_INFO[r.r];toastEl.innerHTML=`<b>${info.name.toUpperCase()}</b><span>${info.twist?'watch out: '+info.twist:km(Math.max(0,r.leg*LEG))}</span>`;
+  toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.classList.remove('show'),2800);}
+let forkHTML='',forkT=0;
+function forkBanner(html,hold=false){if(html===forkHTML)return;forkHTML=html;clearTimeout(forkT);
+  if(html){forkEl.innerHTML=html;forkEl.classList.add('show');if(hold)forkT=setTimeout(()=>forkBanner(''),2400);}else forkEl.classList.remove('show');}
 
 // ---------- inks and paper on the print and on the page ----------
 // "By region" crossfades the drums as the regions blend; a named preset holds one set everywhere.
 const toHex=v=>'#'+[v.x,v.y,v.z].map(c=>Math.round(c*255).toString(16).padStart(2,'0')).join('');
 let inkLabel='';
-function applyInks(){const Rg=regionAt(R.s),w=Rg.w,U=[print.u.uInk0,print.u.uInk1,print.u.uInk2];let names;
-  if(S.preset==='By region'){for(let k=0;k<3;k++)U[k].value.set(0,0,0).addScaledVector(INK3[0][k],w[0]).addScaledVector(INK3[1][k],w[1]).addScaledVector(INK3[2][k],w[2]);names=REGION[Rg.name].inks;}
-  else{names=PRESETS[S.preset];names.forEach((n,k)=>U[k].value.copy(hex3(INKS[n])));}
+function applyInks(){const Rg=regionAt(R.s),w=Rg.w,U=[print.u.uInk0,print.u.uInk1,print.u.uInk2];
+  if(S.preset==='By region'){for(let k=0;k<3;k++){U[k].value.set(0,0,0);for(let r=0;r<6;r++)if(w[r])U[k].value.addScaledVector(INK3[r][k],w[r]);}}
+  else PRESETS[S.preset].forEach((n,k)=>U[k].value.copy(hex3(INKS[n])));
   const paper=PAPERS[S.paper],hex=U.map(x=>toHex(x.value));print.u.uPaper.value.copy(hex3(paper));
-  const label=`<b>SHEET ${String(Rg.sheet).padStart(2,'0')}</b> · ${Rg.name} · ${names.join(' / ')}`,key=label+hex.join()+paper;
-  if(key===inkLabel)return;inkLabel=key;   // the page chrome only changes when an ink visibly does
+  const label=`<b>${REGION_INFO[Rg.r].name.toUpperCase()}</b> · ${km(Math.max(0,R.s-startS))}`,key=label+hex.join()+paper;
+  if(key===inkLabel)return;inkLabel=key;   // the page chrome only changes when something visibly does
   const st=document.documentElement.style;st.setProperty('--paper',paper);st.setProperty('--light',hex[0]);st.setProperty('--mid',hex[1]);st.setProperty('--key',hex[2]);
   document.getElementById('sheet').innerHTML=label;
   document.getElementById('bar').innerHTML=hex.map(c=>`<i style="background:${c}"></i>`).join('')+
@@ -118,7 +150,7 @@ for(const c of CONTROLS){
   if(c==='-'){box.appendChild(document.createElement('hr'));continue;}
   const[k,label,a,b,step]=c;
   if(Array.isArray(a)){const l=document.createElement('label');l.innerHTML=`<span>${label}</span><span></span><select>${a.map(o=>`<option${o===S[k]?' selected':''}>${o}</option>`).join('')}</select>`;
-    l.querySelector('select').onchange=e=>{S[k]=e.target.value;if(k==='jump'){startS=JUMP[S.jump];if(state==='run')R.s=startS;else reset();}applyInks();e.target.blur();};box.appendChild(l);continue;}
+    l.querySelector('select').onchange=e=>{S[k]=e.target.value;if(k==='start'){route.reset(REGION_INFO.findIndex(r=>r.name===S.start));world.rebuildAll();reset();if(state==='dead'){state='title';showCard('title');}}applyInks();e.target.blur();};box.appendChild(l);continue;}
   if(a===undefined){const l=document.createElement('label');l.className='chk';l.innerHTML=`<input type="checkbox"${S[k]?' checked':''}> ${label}`;
     l.querySelector('input').onchange=e=>{S[k]=e.target.checked;e.target.blur();};box.appendChild(l);continue;}
   const l=document.createElement('label');l.innerHTML=`<span>${label}</span><output>${S[k]}</output><input type="range" min="${a}" max="${b}" step="${step}" value="${S[k]}">`;
@@ -142,48 +174,53 @@ const go=()=>{if(state==='title'||(state==='dead'&&deadT>.8))begin();};
 addEventListener('keydown',e=>{if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;const c=e.code;
   if(c==='KeyL'){toggleLab();return;}if(c==='KeyP'||c==='Escape'){togglePause();return;}if(c==='KeyC'){proofT=.6;return;}
   if(state!=='run'){if(c==='Space'||c==='Enter'||c==='ArrowUp'){e.preventDefault();go();}return;}
-  if(paused)return;
+  if(paused||e.repeat)return;
   if(c==='ArrowLeft'||c==='KeyA')lane(-1);else if(c==='ArrowRight'||c==='KeyD')lane(1);
-  else if(c==='ArrowUp'||c==='KeyW'||c==='Space'){e.preventDefault();jump();}else if(c==='ArrowDown'||c==='KeyS'){e.preventDefault();slide();}});
-// Swipes steer during a run; elsewhere a drag looks around (springs back) and a tap starts.
+  else if(c==='ArrowUp'||c==='KeyW'||c==='Space'){e.preventDefault();jump();}else if(c==='ArrowDown'||c==='KeyS'){e.preventDefault();duck(true);}});
+addEventListener('keyup',e=>{if(e.code==='ArrowDown'||e.code==='KeyS')duck(false);});
+addEventListener('blur',()=>duck(false));
+// Swipes steer during a run (swipe down and keep holding to stay low); elsewhere a drag looks around
+// (springs back) and a tap starts.
 let yaw=0,pitch=0,ptr=null;
 frameEl.addEventListener('pointerdown',e=>{ptr={x:e.clientX,y:e.clientY,yaw,pitch,done:false};frameEl.setPointerCapture(e.pointerId);});
 frameEl.addEventListener('pointermove',e=>{if(!ptr)return;const dx=e.clientX-ptr.x,dy=e.clientY-ptr.y;
-  if(state==='run'&&!paused){if(!ptr.done&&Math.hypot(dx,dy)>28){ptr.done=true;if(Math.abs(dx)>Math.abs(dy))lane(dx>0?1:-1);else if(dy<0)jump();else slide();}return;}
+  if(state==='run'&&!paused){if(!ptr.done&&Math.hypot(dx,dy)>28){ptr.done=true;if(Math.abs(dx)>Math.abs(dy))lane(dx>0?1:-1);else if(dy<0)jump();else{duck(true);ptr.ducking=true;}}return;}
   yaw=ptr.yaw-dx*.005;pitch=Math.max(-.9,Math.min(.9,ptr.pitch-dy*.005));});
-frameEl.addEventListener('pointerup',e=>{if(ptr&&!ptr.done&&Math.hypot(e.clientX-ptr.x,e.clientY-ptr.y)<10){if(state==='run')jump();else go();}ptr=null;});
-frameEl.addEventListener('pointercancel',()=>{ptr=null;});
+const up=e=>{if(ptr){if(ptr.ducking)duck(false);else if(!ptr.done&&e&&Math.hypot(e.clientX-ptr.x,e.clientY-ptr.y)<10){if(state==='run')jump();else go();}}ptr=null;};
+frameEl.addEventListener('pointerup',up);frameEl.addEventListener('pointercancel',()=>up(null));
 card.addEventListener('pointerup',go);
 
 // ---------- loop ----------
 applyInks();applySun();resize();showCard('title');
 let t=0,last=performance.now(),pathY=null,fpsN=0,fpsT=0;
-const look=new THREE.Vector3(),sunP=new THREE.Vector3(),fogInk=new THREE.Vector3(),F={},A={},distEl=document.getElementById('dist'),fpsEl=document.getElementById('fps');
+const look=new THREE.Vector3(),sunP=new THREE.Vector3(),F={},A={},distEl=document.getElementById('dist'),fpsEl=document.getElementById('fps');
+const mix6=(w,key,out)=>{if(typeof RG[0][key]==='number'){let v=0;for(let r=0;r<6;r++)v+=w[r]*RG[r][key];return v;}
+  out.set(0,0,0);for(let r=0;r<6;r++)if(w[r]){const a=RG[r][key];out.x+=a[0]*w[r];out.y+=a[1]*w[r];if(out.isVector3)out.z+=a[2]*w[r];}return out;};
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
   if(!paused){t+=dt;if(state==='run')step(dt);else if(state==='dead'){deadT+=dt;if(R.y<0&&R.y>-6){R.vy-=G*dt;R.y+=R.vy*dt;}}}
   const P=world.path,f=P.at(R.s,F),a=P.at(R.s+22,A),k=1-Math.exp(-6*dt);
-  // camera: path height is smoothed (hills), the runner's own jump/slide is not
+  // camera: path height is smoothed (hills), the runner's own jump/duck is not
   const py=P.height(R.s);pathY=pathY===null?py:pathY+(py-pathY)*k;
-  R.eye+=((R.slide>0?.78:1.62)-R.eye)*(1-Math.exp(-22*dt));
+  R.eye+=((R.duck?.78:1.62)-R.eye)*(1-Math.exp(-22*dt));
   camera.position.set(f.x+R.u*f.rx,pathY+R.eye+R.y,f.z+R.u*f.rz);
   look.set(a.x+R.u*.5*a.rx,P.height(R.s+22)+1.45+R.y*.35,a.z+R.u*.5*a.rz);camera.lookAt(look);
-  R.roll+=((R.u-R.lane*LANE)*.02-R.roll)*k;
+  R.roll+=((R.u-(R.branch?R.u:R.lane*LANE))*.02-R.roll)*k;
   if(!ptr||state==='run'){yaw*=1-k*.5;pitch*=1-k*.5;}
   shake=Math.max(0,shake-dt*2.5);
   camera.rotateY(yaw+Math.sin(t*61)*.012*shake);camera.rotateX(pitch-.02+Math.sin(t*47)*.02*shake);camera.rotateZ(R.roll);
   world.update(R.s,camera.position);sky.position.copy(camera.position);
-  // the region sets the fog, the sky and the strength of the light shafts
-  const Rg=regionAt(R.s),w=Rg.w,mu=mat.uniforms;
-  fogInk.set(0,0,0);let fogK=0,shaftK=0;RK.forEach((r,i)=>{const Gg=REGION[r];fogInk.x+=Gg.fog[0]*w[i];fogInk.y+=Gg.fog[1]*w[i];fogInk.z+=Gg.fog[2]*w[i];fogK+=Gg.fogK*w[i];shaftK+=Gg.shaft*w[i];});
-  mu.uTime.value=t;mu.uFogDist.value=S.fog*fogK;mu.uFogInk.value.copy(fogInk);mu.uBio.value.set(w[0],w[1],w[2]);
-  sky.material.uniforms.uFogInk.value.copy(fogInk);sky.material.uniforms.uBio.value.set(w[0],w[1],w[2]);
+  // the region sets the fog, sky, hills and light shafts
+  const w=regionAt(R.s).w,mu=mat.uniforms,su=sky.material.uniforms;
+  mu.uTime.value=t;mu.uFogDist.value=S.fog*mix6(w,'fogK');mix6(w,'fog',mu.uFogInk.value);
+  mix6(w,'far',mu.uFarInk.value);mix6(w,'near',mu.uNearInk.value);mix6(w,'ringFog',mu.uRingFog.value);mu.uSnowLine.value=mix6(w,'snow');mu.uStrata.value=mix6(w,'strata');
+  su.uFogInk.value.copy(mu.uFogInk.value);mix6(w,'sky',su.uSkyTop.value);su.uNight.value=mix6(w,'night');su.uKasumi.value=mix6(w,'kasumi');
   air.update(t,camera,w,print.rt.height/(2*Math.tan(camera.fov*Math.PI/360)));
   sunP.copy(mu.uSun.value).multiplyScalar(1000).add(camera.position).project(camera);
   const onScreen=sunP.z<1?1-Math.min(1,Math.max(0,(Math.max(Math.abs(sunP.x),Math.abs(sunP.y))-1)/.6)):0;
-  print.u.uSunUV.value.set(sunP.x*.5+.5,sunP.y*.5+.5);print.u.uShaft.value=S.shafts*shaftK*onScreen;
+  print.u.uSunUV.value.set(sunP.x*.5+.5,sunP.y*.5+.5);print.u.uShaft.value=S.shafts*mix6(w,'shaft')*onScreen;
   // misregistration: a base drift plus more with speed; the key plate stays nearly registered.
-  // "Clean proof" snaps every plate into register — the crash frame.
+  // A crash snaps every plate into register for a moment.
   proofT=Math.max(0,proofT-dt);
   const sp=state==='run'?R.v:0,m=proofT>0?0:S.mis+sp*S.speedMis,u=print.u,tick=Math.floor(t*12),j=S.reprint?(i=>(Math.sin(tick*12.9898+i*78.233)*43758.5453%1)*.35):()=>0;
   u.uMis0.value.set(-.85*m+j(1)*m,.55*m+j(2)*m);u.uMis1.value.set(.75*m+j(3)*m,-.4*m+j(4)*m);u.uMis2.value.set(.08*m,.04*m);
@@ -193,8 +230,9 @@ function frame(now){
   applyInks();
   print.render(scene,camera);
   const dist=Math.floor(R.s-startS);hud.textContent=state==='title'?'':pad(dist)+' M';
-  fpsN++;fpsT+=dt;if(fpsT>.5){fpsEl.textContent=Math.round(fpsN/fpsT)+' fps';fpsN=0;fpsT=0;distEl.textContent=pad(dist);}
+  fpsN++;fpsT+=dt;if(fpsT>.5){fpsEl.textContent=Math.round(fpsN/fpsT)+' fps';fpsN=0;fpsT=0;distEl.textContent=runNo+' · BEST '+pad(best);}
   requestAnimationFrame(frame);
 }
-window.RR={S,R,print,world,camera,scene,air,applyInks,applySun,begin,jump,slide,lane,tick:dt=>{world.obs.ensure(R.s+300);if(state==='run')step(dt);},get state(){return state;},get paused(){return paused;}};   // for poking at it from the console
+window.RR={S,R,print,world,camera,scene,air,route,applyInks,applySun,begin,jump,duck,lane,
+  tick:dt=>{world.update(R.s,camera.position);if(state==='run')step(dt);},get state(){return state;},get paused(){return paused;}};   // for poking at it from the console
 requestAnimationFrame(frame);
