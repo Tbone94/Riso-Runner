@@ -1,7 +1,9 @@
 // audio.js — every sound is made in code with WebAudio: a bed of ambience per region, footsteps that
 // change with the ground, and small effects. Nothing loads; the context starts on the first tap or key.
-// Regions: forest, autumn, jungle, desert, snow, night.
-let ctx=null,master=null,noiseBuf=null,vol=.8,muted=false;
+// Regions: forest, autumn, jungle, desert, snow, night. The music is the one thing that loads (see music()).
+// Mix: effects and ambience (master, lifted 8 dB) and music (mbus) meet in out (volume, mute), then a safety limiter.
+let ctx=null,master=null,out=null,noiseBuf=null,vol=.8,muted=false;
+const SFX=2.5,MUSIC=.7;   // effects lift; the music slider's scale (0.5 on the slider sits under the effects)
 const beds=[];let birdT=0,stepPhase=0,lastFoot=0;
 
 function noise(){if(noiseBuf)return noiseBuf;const n=ctx.sampleRate*2;noiseBuf=ctx.createBuffer(1,n,ctx.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;return noiseBuf;}
@@ -11,15 +13,51 @@ const env=(g,t,a,peak,d)=>{g.gain.cancelScheduledValues(t);g.gain.setValueAtTime
 export function start(){
   if(ctx){if(ctx.state==='suspended')ctx.resume();return;}
   const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
-  ctx=new AC();master=ctx.createGain();master.gain.value=muted?0:vol;master.connect(ctx.destination);
+  ctx=new AC();out=ctx.createGain();out.gain.value=muted?0:vol;
+  const lim=ctx.createDynamicsCompressor();lim.threshold.value=-6;lim.knee.value=4;lim.ratio.value=12;lim.attack.value=.003;lim.release.value=.25;
+  out.connect(lim);lim.connect(ctx.destination);master=ctx.createGain();master.gain.value=SFX;master.connect(out);
+  mlp=ctx.createBiquadFilter();mlp.type='lowpass';mlp.frequency.value=20000;mbus=ctx.createGain();mbus.gain.value=0;mbus.connect(mlp);mlp.connect(out);
+  fetch('music/music.json').then(r=>r.ok?r.json():null).then(m=>{man=m&&(m.loops||m);msync=!!(m&&m.sync);}).catch(()=>{});
+  document.addEventListener('visibilitychange',()=>{document.hidden?ctx.suspend():ctx.resume();});   // no sound from a hidden tab
   // ambience beds: a filtered noise per region (wind through leaves, jungle hum, desert wind, hush, night)
   const BED=[{f:900,q:.6,g:.05},{f:1400,q:.5,g:.07},{f:3800,q:3,g:.035},{f:420,q:.4,g:.07},{f:600,q:.3,g:.045},{f:5200,q:6,g:.02}];
   for(const b of BED){const s=src(),f=ctx.createBiquadFilter(),g=ctx.createGain();f.type='bandpass';f.frequency.value=b.f;f.Q.value=b.q;g.gain.value=0;
     s.connect(f);f.connect(g);g.connect(master);s.start(ctx.currentTime+Math.random());beds.push({g,base:b.g,f});}
 }
-export function setVolume(v){vol=v;if(master)master.gain.value=muted?0:vol;}
-export function setMuted(m){muted=m;if(master)master.gain.value=muted?0:vol;}
+export function setVolume(v){vol=v;if(out)out.gain.value=muted?0:vol;}
+export function setMuted(m){muted=m;if(out)out.gain.value=muted?0:vol;}
 export const isMuted=()=>muted;
+export function setMusicVolume(v){musicVol=v;}
+
+// ---------- music ----------
+// One loop per region (music/<region>.m4a, listed in music/music.json), crossfading when the region you're in
+// changes. Each file carries a second of the loop's own audio on both ends, so the loop points stay seamless
+// whatever a decoder does with AAC's priming samples. Only the playing and the next region stay decoded.
+// When every loop is the same length (versions of one theme, music.json "sync"), a new region's version starts at
+// the same point in the bar as the one playing, so the tune carries on through the fade and only the band changes.
+const NAMES=['forest','autumn','jungle','desert','snow','night'];
+let man=null,msync=false,mbus=null,mlp=null,musicVol=.5,curR=-1,sync0=-1;
+const xf=()=>msync?4:3;   // crossfade seconds
+const loops={},voices=[];   // loops: region -> decode promise; voices: the loops playing (one, or two in a crossfade)
+function loadLoop(r){const m=man&&man[NAMES[r]];if(!m)return null;
+  return loops[r]||(loops[r]=fetch('music/'+m.file).then(x=>x.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(buf=>({buf,m})).catch(()=>{delete loops[r];return null;}));}
+function playLoop(r){const p=loadLoop(r);if(!p)return;
+  p.then(L=>{if(!L||curR!==r||voices.some(v=>v.r===r&&!v.out))return;const t=ctx.currentTime,src=ctx.createBufferSource(),g=ctx.createGain();
+    src.buffer=L.buf;src.loop=true;src.loopStart=L.m.pad;src.loopEnd=L.m.pad+L.m.loop;
+    const live=voices.length>0;if(!live||!msync)sync0=t;const at=msync?(t-sync0)%L.m.loop:0;
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(1,t+(live?xf():1.5));src.connect(g);g.connect(mbus);src.start(t,L.m.pad+at);
+    const v={r,src,g,out:false};voices.push(v);src.onended=()=>voices.splice(voices.indexOf(v),1);});}
+// Called every frame: r = the region you're in, next = the one after it, level = 1 running, less on cards and pause.
+export function music(r,next,level=1,focus=false){
+  if(!ctx||!man)return;const t=ctx.currentTime;
+  mbus.gain.setTargetAtTime(MUSIC*musicVol*level,t,.4);
+  mlp.frequency.setTargetAtTime(focus?900:20000,t,.2);   // focus muffles the music, as if underwater
+  if(r!==curR){curR=r;for(const v of voices)if(!v.out&&v.r!==r){v.out=true;v.g.gain.cancelScheduledValues(t);v.g.gain.setValueAtTime(v.g.gain.value,t);v.g.gain.linearRampToValueAtTime(0,t+xf());v.src.stop(t+xf()+.1);}
+    playLoop(r);}
+  loadLoop(next);
+  for(const k in loops)if(+k!==r&&+k!==next&&!voices.some(v=>v.r===+k))delete loops[k];   // let go of loops we're done with
+}
+export const _debug=()=>({ctx,master,out,mbus,voices,loops,curR,man,sync0});   // for measuring from the console
 
 // a short tone with an envelope
 function tone(freq,dur,{type='sine',gain=.2,glide=0,at=0,attack=.005}={}){if(!ctx)return;const t=ctx.currentTime+at,o=ctx.createOscillator(),g=ctx.createGain();

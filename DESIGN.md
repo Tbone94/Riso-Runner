@@ -46,6 +46,10 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 - **Sound** is all generated in code (WebAudio): an ambience bed per region with birds, parrots or crickets,
   footsteps that change with the ground (snow crunch, boardwalk, sand), and effects for jump, land, duck, lane,
   pickups (a rising pentatonic run when you string them), focus, crashes, forks and new regions. M mutes.
+- **Music** (v1, 2026-10-03): one seamless loop per region (ACE-Step 1.5 takes, MIT), crossfading over 3 s when the
+  region changes; quieter on the menu and when paused, muffled during focus. Its own Music slider. The effects were
+  lifted 8 dB to sit above it, with a safety limiter on the output. Next (owner's idea): one theme with a version per
+  region, Mario-style, played in step so only the band changes at a border.
 - **Settings** (title and pause): field of view, volume, sound off, calm mode (steadier print, no shake),
   quality (auto drops the print resolution when the frame rate sags). The view widens on portrait screens so
   all three lanes fit.
@@ -116,7 +120,7 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 - **M3** Ink drops, focus, and the postcard. **Done.** (The roller was built, then removed.)
 - **M4** New course per run, today's run, sound, settings and pause, auto quality, installable app. **Done.**
   Difficulty is tuned by the autopilot tests only; it needs real play.
-- **M5** Ship: `tools/itch-build.sh` is ready; the itch page waits for the user's approval of the final build.
+- **M5** Ship: music added; owner asked to publish on itch and GitHub Pages (2026-10-03).
 
 ## Files
 - `index.html`: the game; L opens the look lab panel.
@@ -125,7 +129,8 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
 - `src/main.js`: game states, the runner, input, HUD and cards, the loop, the lab panel.
 - `src/air.js`: leaves, motes and birds.
 - `src/postcard.js`: the end-of-run postcard.
-- `src/audio.js`: procedural sound.
+- `src/audio.js`: procedural sound and the music player.
+- `music/`: the region loops and `music.json` (made by `tools/music/loops.py`).
 - `sw.js`, `manifest.webmanifest`, `icons/`: the installable app.
 - `tools/itch-build.sh`: the itch.io zip.
 - `lib/`: three.js r180 (MIT), vendored so it works offline and on itch.

@@ -1,4 +1,4 @@
-# Handoff (2026-10-03, end of the first build chat)
+# Handoff (2026-10-03, after the music chat)
 
 Riso Runner is playable and nearly ready to ship. Read `DESIGN.md` first (what the game is, every decision and why),
 then this. The owner approves the final build before anything goes to itch: **never upload without their OK.**
@@ -12,26 +12,25 @@ then this. The owner approves the final build before anything goes to itch: **ne
 - **Tested by autopilot only** (it clears 18 km across all regions and forks). Not yet played on a real phone. The owner
   hasn't heard the procedural sound effects yet (Claude can't listen).
 
-## In progress: music
-The owner wants smooth, jazzy Japanese city pop, and loves **Masayoshi Takanaka** (bright jazz-fusion, singing guitar,
-samba/latin lift). Directions tried:
-1. `tools/music/mockups.py` + `sampler.py`: notes written in code, played on real recorded instruments from
-   `~/Music/squish-instruments` (shared with the squish game). Owner verdict: **instruments and tone feel off.**
-   This library has no Rhodes, electric bass, electric guitar, sax or full drum kit.
-2. **ACE-Step 1.5 (MIT licence, commercial use OK) via the acemusic.ai API**. This is the current path.
-   - `tools/music/ace_api.py <direction> [takes] [seconds]`, run with `tools/music/.venv/bin/python` (has certifi; the
-     python.org Python lacks system certificates). It needs a browser-like User-Agent (Cloudflare blocks urllib's default).
-   - The API key is in `~/.config/acemusic/key` (chmod 600, outside the repo). Never print it or commit it. The owner pasted
-     it in chat, so suggest they regenerate it at acemusic.ai/playground/api-key when music is done.
-   - Directions and prompts are in `DIRS` inside `ace_api.py`: fusion (120 bpm, E), citypop (104, D), kankyo (78), lofi (84).
-   - 11 takes are in `tools/music/out/` (gitignored): fusion-1..3 (mp3), fusion-9 (flac + m4a), citypop-1..3, kankyo-1..2,
-     lofi-1..2. They were all sent to the owner; **their verdict is pending.** Default output is now FLAC.
-   - Some takes have quiet intros or outros (2-second windows down to −52…−58 dB), so cut loops from the steady middle.
-   - The HF Space route (`tools/music/ace.py`, gradio_client) works but the anonymous ZeroGPU quota is tiny. Use the API.
-3. **Next steps for music:** get the owner's picks → generate more takes in that direction (FLAC; try reference-audio or
-   more specific prompts) → cut seamless loops (crossfade at a bar line, keep tempo-aligned length) → master to about
-   −18 dBFS RMS → ship as compressed audio (m4a/ogg, mind the itch zip size) → add a music player in `src/audio.js` with a
-   music volume setting. Idea the owner liked: one track per direction with a layer per biome, crossfading at region borders.
+## Music
+**Shipped in v1:** one loop per region in `music/` (forest fusion-2, autumn citypop-1, jungle fusion-1, desert fusion-3,
+snow kankyo-1, night lofi-1), crossfading at region changes. The owner wasn't sold on any take ("all over the place")
+but chose to ship these for now.
+- `tools/music/ace_api.py`: ACE-Step 1.5 via the acemusic.ai API (run with `tools/music/.venv/bin/python`). Key in
+  `~/.config/acemusic/key`; never print or commit it; suggest the owner regenerates it at acemusic.ai/playground/api-key.
+  It now retries 5xx errors and has a `cover` command (re-arrange a take for a region, keeping melody and timing).
+- `tools/music/loops.py` (system `python3`, needs numpy): finds the beat grid, keeps the steady middle, picks whole bars
+  whose end matches the bar before the start, crossfades, masters to -18 dBFS RMS with a -1 dBFS limiter, pads 1 s of
+  the loop's own audio on both ends (seamless whatever the AAC decoder does with priming), encodes AAC 128k.
+  `audition <takes>` → `tools/music/out/loops/` + `out/loops.html`; `build` → `music/` from `PICKS`;
+  `theme <main> region=<cover> ...` cuts the same bars from every cover and writes `"sync": true`.
+- `src/audio.js` music(): decodes only the playing and next region; with `"sync"` the new version starts at the same
+  point in the bar. Measured in Chrome: decoded lengths exact, no click at the loop point, crossfade as designed.
+- **Next (owner's idea, 2026-10-03):** one chill theme (sax and guitar) with a version per region, Mario-style.
+  `DIRS['theme']` (96 bpm, F major) and `VARIANTS` (per-region band/mood) are in `ace_api.py`. Two candidates exist in
+  `tools/music/out/` (theme-1, theme-think-1; listen page `out/theme.html`), plus trimmed sources `*-cut.flac`.
+  The acemusic.ai service was overloaded that night: 504s on everything, and covers with a 25 MB upload never went
+  through. Retry one request at a time, with the trimmed 16-bit sources.
 
 ## Before shipping (M5)
 - `tools/itch-build.sh` makes `promo/itch/riso-runner-<stamp>.zip` (strips the service worker). Make a **new** itch page

@@ -7,7 +7,7 @@ set -e
 cd "${0:A:h}/.."
 stamp=$(date +%Y%m%d%H%M)
 tmp=$(mktemp -d)
-cp -R index.html riso.js manifest.webmanifest src lib fonts icons "$tmp/"
+cp -R index.html riso.js manifest.webmanifest src lib fonts icons music "$tmp/"
 python3 - "$tmp/index.html" <<'PY'
 import re,sys
 p=sys.argv[1];s=open(p).read()

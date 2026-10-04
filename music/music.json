@@ -1,0 +1,44 @@
+{
+ "forest": {
+  "file": "forest.m4a",
+  "loop": 32.0,
+  "pad": 1.0,
+  "take": "fusion-2",
+  "bpm": 120.0
+ },
+ "autumn": {
+  "file": "autumn.m4a",
+  "loop": 36.926625,
+  "pad": 1.0,
+  "take": "citypop-1",
+  "bpm": 103.99
+ },
+ "jungle": {
+  "file": "jungle.m4a",
+  "loop": 48.0,
+  "pad": 1.0,
+  "take": "fusion-1",
+  "bpm": 120.0
+ },
+ "desert": {
+  "file": "desert.m4a",
+  "loop": 31.997333333333334,
+  "pad": 1.0,
+  "take": "fusion-3",
+  "bpm": 120.01
+ },
+ "snow": {
+  "file": "snow.m4a",
+  "loop": 36.92308333333333,
+  "pad": 1.0,
+  "take": "kankyo-1",
+  "bpm": 78.0
+ },
+ "night": {
+  "file": "night.m4a",
+  "loop": 45.18179166666667,
+  "pad": 1.0,
+  "take": "lofi-1",
+  "bpm": 84.99
+ }
+}

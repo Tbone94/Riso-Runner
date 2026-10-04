@@ -46,7 +46,7 @@ const CONTROLS=[
 ];
 const store0={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}}};
 // The player's settings: field of view, volume, calm mode (less print wobble, no shake) and quality.
-const SET=Object.assign({fov:78,volume:.8,muted:false,calm:false,quality:'auto'},store0.get('settings',{}));
+const SET=Object.assign({fov:78,volume:.8,music:.5,muted:false,calm:false,quality:'auto'},store0.get('settings',{}));
 const store={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}},set(k,v){try{localStorage.setItem('rr.'+k,JSON.stringify(v));}catch{}}};
 
 // ---------- renderer, scene, camera ----------
@@ -153,6 +153,7 @@ function showCard(kind,m,how,wasBest){prevCard=kind==='settings'?prevCard:kind;c
   else if(kind==='settings')card.innerHTML=`<h1>SETTINGS</h1>
       <label class="set"><span>Field of view</span><input type="range" min="60" max="100" step="1" value="${SET.fov}" data-k="fov"></label>
       <label class="set"><span>Volume</span><input type="range" min="0" max="1" step=".05" value="${SET.volume}" data-k="volume"></label>
+      <label class="set"><span>Music</span><input type="range" min="0" max="1" step=".05" value="${SET.music}" data-k="music"></label>
       <label class="set chk"><input type="checkbox" data-k="muted"${SET.muted?' checked':''}><span>Sound off (M)</span></label>
       <label class="set chk"><input type="checkbox" data-k="calm"${SET.calm?' checked':''}><span>Calm mode: steadier print, no shake</span></label>
       <label class="set"><span>Quality</span><select data-k="quality">${['auto','high','low'].map(q=>`<option${q===SET.quality?' selected':''}>${q}</option>`).join('')}</select></label>
@@ -167,7 +168,7 @@ function showCard(kind,m,how,wasBest){prevCard=kind==='settings'?prevCard:kind;c
       card.querySelector('.pc').src=card_pc.toDataURL('image/jpeg',.85);}}
   card.classList.add('show');}
 function saveSettings(){store.set('settings',SET);}
-function applySettings(){S.fov=SET.fov;fitFov();audio.setVolume(SET.volume);audio.setMuted(SET.muted);
+function applySettings(){S.fov=SET.fov;fitFov();audio.setVolume(SET.volume);audio.setMusicVolume(SET.music);audio.setMuted(SET.muted);
   if(SET.quality!=='auto'){S.scale=SET.quality==='low'?.55:.9;resize();}}
 card.addEventListener('input',e=>{const k=e.target.dataset.k;if(!k)return;SET[k]=e.target.type==='checkbox'?e.target.checked:e.target.type==='range'?+e.target.value:e.target.value;applySettings();saveSettings();});
 function act(a){audio.start();
@@ -312,6 +313,7 @@ function frame(now){
   focusEl.style.setProperty('--fill',(focusT>0?focusT/FOCUS_T:meter)*100+'%');focusEl.classList.toggle('ready',meter>=1&&focusT<=0);focusEl.classList.toggle('on',focusT>0);
   focusEl.classList.toggle('hide',state==='title');
   audio.update(dt,w,state==='run'&&!paused?R.v:0,!R.air,state==='run'&&!paused);
+  {const rg=regionAt(R.s);audio.music(rg.r,route.leg(rg.leg+1),paused?.35:state==='run'?1:.75,focusT>0);}
   document.getElementById('pauseHud').classList.toggle('hide',state!=='run');
   // quality on auto: drop the print's resolution if the frame rate sags (slow phones), creep back up if there's room
   if(SET.quality==='auto'&&state==='run'&&!paused&&!document.hidden){qT+=dt;qN++;if(qT>2.5){const fps=qN/qT;
