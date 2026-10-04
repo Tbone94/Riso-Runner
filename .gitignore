@@ -2,3 +2,4 @@
 promo/
 tools/music/.venv/
 tools/music/out/
+__pycache__/
