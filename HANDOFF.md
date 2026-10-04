@@ -32,6 +32,12 @@ but chose to ship these for now.
   The acemusic.ai service was overloaded that night: 504s on everything, and covers with a 25 MB upload never went
   through. Retry one request at a time, with the trimmed 16-bit sources.
 
+## Live
+- Code: https://github.com/Tbone94/Riso-Runner (public, pushed over SSH). Play/install: https://tbone94.github.io/Riso-Runner/
+  (GitHub Pages from `main`, root; pushes to `main` redeploy in about a minute). Bump `VERSION` in `sw.js` when shipping
+  so installed copies pick up the update.
+- itch: not up yet. The zip is built (`tools/itch-build.sh`); the owner makes the new project page.
+
 ## Before shipping (M5)
 - `tools/itch-build.sh` makes `promo/itch/riso-runner-<stamp>.zip` (strips the service worker). Make a **new** itch page
   for Riso Runner, distinct from Riso Rider (gambo7592.itch.io/riso-rider). Owner approval first.
