@@ -78,10 +78,11 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
   after Superhot, printed in flat facets (the shader takes facet normals from screen derivatives), the body in the
   region's mid ink and its joints in key ink, with the obstacles' outline and paper edge. The model and its motion are
   Quaternius' Universal Animation Library (CC0; models/runner.glb, trimmed to seven clips by tools/trim-glb.mjs):
-  Sprint_Loop sped up with you, Jump_Start → Jump_Loop → Jump_Land, Roll to duck, Idle on the title. The first,
+  Sprint_Loop sped up with you, Jump_Start → Jump_Loop → Jump_Land, a slide to duck (Slide_Start → Slide_Loop →
+  Slide_Exit from UAL2, whose skeleton matches UAL1's rest pose bone for bone, so tools/add-clips.mjs only renames the
+  bones), Idle on the title. The first,
   hand-posed mannequin looked stiff and now only stands in while the model loads. A lean into lane changes; on a crash
-  the posed body shatters into facet shards (falling into a gap, it just falls). UAL2's Slide clips are on a different
-  skeleton (Unreal names, not Rigify) and would need retargeting. Pickups fly to the runner. First person is unchanged.
+  the posed body shatters into facet shards (falling into a gap, it just falls). Pickups fly to the runner. First person is unchanged.
 
 ## Pitched, not decided
 Downhill momentum and launches, speed as health, drawing ink bridges at speed (the Riso Rider link),

@@ -93,7 +93,8 @@ export class Runner{
 
 // ---------- the rigged runner ----------
 // Quaternius' Universal Animation Library mannequin (CC0, models/runner.glb, trimmed by tools/trim-glb.mjs) with
-// real animation: Sprint_Loop sped up with your speed, Jump_Start → Jump_Loop → Jump_Land, Roll to duck, Idle on the
+// real animation: Sprint_Loop sped up with your speed, Jump_Start → Jump_Loop → Jump_Land, a slide to duck (UAL2's
+// Slide_Start → Slide_Loop → Slide_Exit, added by tools/add-clips.mjs), Idle on the
 // title. It prints with the same ink as the hand-built runner (flat facets, mid-ink body, key-ink joints), and the
 // procedural runner stands in until the model loads (or if it can't).
 const HEIGHT=1.78;
@@ -112,7 +113,7 @@ export class RiggedRunner{
     this.body=new THREE.Group();this.body.add(model);this.meshes=meshes;
     this.mixer=new THREE.AnimationMixer(model);this.A={};
     for(const c of g.animations){const a=this.mixer.clipAction(c);this.A[c.name]=a;}
-    for(const n of['Jump_Start','Jump_Land','Roll']){this.A[n].setLoop(THREE.LoopOnce,1);this.A[n].clampWhenFinished=true;}
+    for(const n of['Jump_Start','Jump_Land','Slide_Start','Slide_Exit']){this.A[n].setLoop(THREE.LoopOnce,1);this.A[n].clampWhenFinished=true;}
     this.cur=null;this.play('Idle_Loop',0);
     this.scene.remove(this.stand.root);this.root=new THREE.Group();this.root.add(this.body);this.scene.add(this.root);this.ready=true;this.wasAir=false;this.wasDuck=false;this.landT=0;}
   play(name,fade=.15,ts=1,from=0){const a=this.A[name];if(this.cur===a){a.timeScale=ts;return;}
@@ -129,7 +130,8 @@ export class RiggedRunner{
     const run=R.v>.5,sprint=Math.min(1.55,Math.max(.85,R.v/15));
     if(!run&&dt>0)this.play('Idle_Loop',.3);
     else if(R.air){if(!this.wasAir)this.play('Jump_Start',.08,1.6,.45);else if(this.cur===this.A.Jump_Start&&this.cur.time>=this.cur.getClip().duration-.05)this.play('Jump_Loop',.15);}
-    else if(R.duck){if(!this.wasDuck)this.play('Roll',.08,1.9,.1);}
+    else if(R.duck){const sl=this.A.Slide_Start;if(!this.wasDuck)this.play('Slide_Start',.08,1.8,.1);else if(this.cur===sl&&sl.time>=sl.getClip().duration-.05)this.play('Slide_Loop',.1);}
+    else if(this.wasDuck){this.play('Slide_Exit',.06,1.8);this.landT=.26;}
     else if(this.wasAir){this.play('Jump_Land',.06,2.4,.25);this.landT=.22;}
     else if(this.landT>0){this.landT-=dt;if(this.landT<=0)this.play('Sprint_Loop',.12,sprint);}
     else this.play('Sprint_Loop',this.wasDuck?.12:.2,sprint);
