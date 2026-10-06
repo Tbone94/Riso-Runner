@@ -7,6 +7,7 @@ import {inkMaterial,skyMaterial,signMaterial,PrintPass,hex3} from './print.js';
 import {World,regionAt,route,REGIONS,REGION_INFO,FINDS,findKind,LEG,BLEND,LANE,START,FORK_LEN,forkAt,speedAt,iceAt} from './world.js';
 import {Air} from './air.js';
 import {postcard} from './postcard.js';
+import {RiggedRunner} from './runner.js';
 import * as audio from './audio.js';
 
 const {INKS,PAPERS}=window.Riso;
@@ -37,7 +38,8 @@ const RG=REGIONS.map(r=>REGION[r]),INK3N=RG.map(g=>g.inks.map(n=>hex3(INKS[n])))
 const INK3C=INK3N.map((s,r)=>r===2?['Yellow','Teal','Hunter Green'].map(n=>hex3(INKS[n])):s);
 let INK3=INK3N;
 const S={start:'Forest',preset:'By region',shafts:.7,paper:'Natural',fov:78,sun:-38,fog:150,god:false,
-  tone:.55,hatch:.3,deckle:1,halo:1,grain:1.2,grainAmt:.6,ink:.9,soft:.85,mis:1.4,speedMis:.1,drift:.6,outline:.85,thick:1,wobble:1.4,defects:.5,dots:0,scale:.75,reprint:false};
+  tone:.55,hatch:.3,deckle:1,halo:1,grain:1.2,grainAmt:.6,ink:1.02,soft:.85,mis:1.4,speedMis:.1,drift:.85,outline:.85,thick:1,wobble:1.4,defects:.4,dots:0,scale:.75,reprint:false,
+  pull:true,twos:false,boil:false,beat:false};   // the motion effects read as glitchy at the screen's edges (user, 2026-10-05): lab only
 const CONTROLS=[
   ['start','Start in',REGION_INFO.map(r=>r.name)],['god','Can\'t crash (for looking around)'],['preset','Inks',['By region',...Object.keys(PRESETS)]],['paper','Paper',Object.keys(PAPERS)],
   ['fov','Field of view',60,100,1],['sun','Sun direction',-180,180,1],['fog','Fog distance',60,320,5],['shafts','Light shafts',0,1.5,.05],
@@ -47,10 +49,11 @@ const CONTROLS=[
   ['drift','Far plates drift',0,1,.05],['outline','Key outlines',0,1,.05],['thick','Outline weight',.5,3,.1],['wobble','Outline wobble',0,4,.1],
   ['defects','Press defects',0,1,.05],['dots','Halftone (mid plate)',0,1,.05],['scale','Render scale',.4,1,.05],
   ['reprint','Reprint at 12 fps'],
+  ['pull','Focus on the next obstacle'],['twos','Scenery on twos (12 fps)'],['boil','Boiling lines'],['beat','Foliage nods on the beat'],
 ];
 const store0={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}}};
 // The player's settings: field of view, volume, calm mode (less print wobble, no shake) and quality.
-const SET=Object.assign({fov:78,sfx:.8,music:.5,muted:false,calm:false,cvd:false,quality:'auto'},store0.get('settings',{}));
+const SET=Object.assign({fov:78,sfx:.8,music:.5,muted:false,calm:false,cvd:false,quality:'auto',view:'behind'},store0.get('settings',{}));
 if('volume' in SET){SET.sfx=SET.volume;delete SET.volume;}   // settings saved before effects and music were split
 const store={get(k,d){try{const v=localStorage.getItem('rr.'+k);return v===null?d:JSON.parse(v);}catch{return d;}},set(k,v){try{localStorage.setItem('rr.'+k,JSON.stringify(v));}catch{}}};
 
@@ -72,11 +75,13 @@ function signMat(k,side){const key=route.version+':'+k+':'+side;if(signs.has(key
   x.lineWidth=8;x.strokeRect(6,6,500,116);
   const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.NoColorSpace;const m=signMaterial(t);signs.set(key,m);return m;}
 document.fonts?.load('900 66px "Big Shoulders Stencil Display"').then(()=>{signs.clear();world.rebuildAll();});
-const world=new World(scene,mat,omat,signMat),air=new Air(scene);
+const world=new World(scene,mat,omat,signMat),air=new Air(scene),runner=new RiggedRunner(scene,omat);
+const behind=()=>SET.view!=='first';   // the view: third person, close behind the runner (default, Temple Run's chase camera), or first person
 const print=new PrintPass(renderer);
 
 // The vertical field of view, widened on tall (portrait) screens so all three lanes always fit across.
-function fitFov(){const minH=72*Math.PI/180,need=2*Math.atan(Math.tan(minH/2)/camera.aspect)*180/Math.PI;camera.fov=Math.min(110,Math.max(S.fov,need));camera.updateProjectionMatrix();}
+function fitFov(){const minH=72*Math.PI/180,need=2*Math.atan(Math.tan(minH/2)/camera.aspect)*180/Math.PI,base=SET.view==='first'?S.fov:S.fov-10;   // a tighter lens in third person
+  camera.fov=Math.min(110,Math.max(base,need));camera.updateProjectionMatrix();}
 // ?trailer: trailer/trailer.js drives the game frame by frame (no clock of its own) at one pixel per CSS pixel.
 const TRAILER=/[?&]trailer\b/.test(location.search);
 function resize(){const r=frameEl.getBoundingClientRect(),dpr=TRAILER?1:Math.min(devicePixelRatio||1,2);
@@ -89,14 +94,18 @@ const bleed=matchMedia('(pointer:coarse),(max-width:640px)'),fitBleed=()=>{S.dec
 // ---------- the runner ----------
 const G=26,JUMP_V=8.8;
 const R={s:START,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0};
-let state='title',deadT=0,startS=START,runNo=store.get('run',0),best=store.get('best',0),shake=0,lastLeg=0,duckHeld=false;
+const CB={},CA={},chest=new THREE.Vector3();let camY=null,camU=null,camDuck=0;
+let focusZ=60,state='title',deadT=0,startS=START,runNo=store.get('run',0),best=store.get('best',0),shake=0,lastLeg=0,duckHeld=false;
+// A slide lasts at most DUCK_MAX seconds on the ground, then you stand: let go and press again to slide again.
+// (Playtest 2026-10-05: a jump can't be held forever, so a slide shouldn't be either.)
+const DUCK_MAX=.9;let duckT=0;
 // Modes: an endless run (a new course every time) or today's run (one course for everyone, by date).
 let mode='endless',streak=0,streakT=0,wasFocus=false,prevCard='title',cardKind='title';
 const today=()=>{const d=new Date();return{key:`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`,seed:d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate()};};
 const dailyBest=()=>store.get('daily.'+today().key,0);
 const FOCUS_DROPS=45,FOCUS_T=6,FOCUS_SLOW=.7;
 let runT=0,got=[0,0,0,0,0,0],ink=0,meter=0,focusT=0,needSnap=false,snap=null,card_pc=null;
-function reset(){Object.assign(R,{s:startS,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0});lastLeg=regionAt(startS).leg;duckHeld=false;
+function reset(){runner.reset();Object.assign(R,{s:startS,u:0,lane:0,branch:0,y:0,vy:0,air:false,duck:false,v:0,eye:1.62,roll:0,bufJump:0});lastLeg=regionAt(startS).leg;duckHeld=false;
   runT=0;got=[0,0,0,0,0,0];ink=0;meter=0;focusT=0;}
 function begin(m=mode){mode=m;audio.start();snap=null;card_pc=null;paused=false;
   const seed=m==='daily'?today().seed:(Math.random()*4294967296)>>>0;
@@ -105,9 +114,11 @@ function begin(m=mode){mode=m;audio.start();snap=null;card_pc=null;paused=false;
 function focus(){if(state!=='run'||meter<1||focusT>0)return;focusT=FOCUS_T;meter=0;audio.sfx.focus();toastText('FOCUS','time slows and pickups fly to you');}
 const events=[];   // crashes, for testing from the console
 function jump(){if(state!=='run'||paused)return;if(!R.air&&!world.gapAt(R.s)){R.vy=JUMP_V;R.air=true;audio.sfx.jump();}else R.bufJump=.15;}
-function duck(on){if(state!=='run'||paused){duckHeld=false;return;}if(on&&!duckHeld)audio.sfx.duck();duckHeld=on;if(on&&R.air)R.vy=Math.min(R.vy,-16);}   // in the air, ducking drops you fast
+function duck(on){if(state!=='run'||paused){duckHeld=false;return;}if(on&&!duckHeld){audio.sfx.duck();duckT=0;}duckHeld=on;if(on&&R.air)R.vy=Math.min(R.vy,-16);}   // in the air, ducking drops you fast
 function lane(d){if(state!=='run'||R.branch||paused)return;const l=Math.max(-1,Math.min(1,R.lane+d));if(l!==R.lane){R.lane=l;audio.sfx.lane();}}
-function die(how){events.push({e:'die',how,s:R.s,t:runT});state='dead';deadT=0;proofT=.55;shake=how==='fell'||SET.calm?0:1;duckHeld=false;needSnap=true;audio.sfx.crash();
+function die(how){events.push({e:'die',how,s:R.s,t:runT});
+  // seen from behind, the runner shatters (Superhot) where it stopped; falling into a gap, it just falls
+  if(behind()&&how!=='fell'){const P=world.path;runner.update(P.at(R.s,{}),P.height(R.s),R,0,0);runner.shatter(R.v,P.height(R.s));}state='dead';deadT=0;proofT=.55;shake=how==='fell'||SET.calm?0:1;duckHeld=false;needSnap=true;audio.sfx.crash();
   const m=Math.floor(R.s-startS),wasBest=m>best;if(wasBest){best=m;store.set('best',best);}
   if(mode==='daily'&&m>dailyBest())store.set('daily.'+today().key,m);
   setTimeout(()=>{if(state==='dead')showCard('dead',m,how,wasBest);},700);}
@@ -127,7 +138,9 @@ function step(dt){
   const gap=S.god?null:world.gapAt(R.s);
   if(R.air||R.y>0||gap){R.vy-=G*dt;R.y+=R.vy*dt;}
   if(!gap&&R.y<=0){R.y=0;R.vy=0;if(R.air){R.air=false;audio.sfx.land();if(R.bufJump>0&&!duckHeld)jump();}}
-  R.duck=duckHeld&&!R.air;
+  if(duckHeld&&!R.air)duckT+=dt;
+  R.duck=duckHeld&&!R.air&&duckT<DUCK_MAX;
+  world.aimLane=Math.max(-1,Math.min(1,Math.round(R.u/LANE)))*LANE;   // where tumbleweeds aim
   if(gap&&R.y<-.5){die('fell');return;}
   if(!S.god){const hit=world.collide(R.s,R.u,R.y,R.duck);if(hit){R.s=Math.min(R.s,hit.o.s-1.5);die(hit.k);return;}}   // stop just short, so you see what you hit
   // pickups (acorns, maple leaves, …); with focus, everything a few metres ahead flies to you
@@ -153,13 +166,14 @@ const ios=/iphone|ipad|ipod/i.test(navigator.userAgent),standalone=matchMedia('(
 function showCard(kind,m,how,wasBest){prevCard=kind==='settings'?prevCard:kind;cardKind=kind;
   if(kind==='title'){const db=dailyBest();
     card.innerHTML=`<h1>RISO RUNNER</h1><p class="sub">run as far as you can</p>
-      <p class="keys">← → change lane · ↑ jump · hold ↓ to duck · F focus<br><span>on a phone: swipe (hold after swiping down to stay low)</span></p>
+      <p class="keys">← → change lane · ↑ jump · ↓ duck (a short slide) · F focus<br><span>on a phone: swipe (hold after swiping down to stay low)</span></p>
       <p class="btns"><button class="go" data-a="run">RUN</button><button data-a="daily">TODAY'S RUN</button></p>
       <p class="best">${best?`BEST ${pad(best)} M`:''}${best&&db?' · ':''}${db?`TODAY ${pad(db)} M`:''}</p>
       <p class="small"><button data-a="settings">SETTINGS</button>${installEvt?'<button data-a="install">INSTALL</button>':''}</p>
       ${ios&&!standalone?'<p class="hint">to install: tap Share, then Add to Home Screen</p>':''}`;}
   else if(kind==='pause')card.innerHTML=`<h1>PAUSED</h1><p class="btns"><button class="go" data-a="resume">RESUME</button><button data-a="settings">SETTINGS</button><button data-a="quit">QUIT</button></p>`;
   else if(kind==='settings')card.innerHTML=`<h1>SETTINGS</h1>
+      <label class="set"><span>View</span><select data-k="view">${[['behind','third person'],['first','first person']].map(([v,n])=>`<option value="${v}"${v===SET.view?' selected':''}>${n}</option>`).join('')}</select></label>
       <label class="set"><span>Field of view</span><input type="range" min="60" max="100" step="1" value="${SET.fov}" data-k="fov"></label>
       <label class="set"><span>${level('Sound effects',SET.sfx)}</span><input type="range" min="0" max="1" step=".05" value="${SET.sfx}" data-k="sfx"></label>
       <label class="set"><span>${level('Music',SET.music)}</span><input type="range" min="0" max="1" step=".05" value="${SET.music}" data-k="music"></label>
@@ -295,8 +309,21 @@ function frame(now){
   // camera: path height is smoothed (hills), the runner's own jump/duck is not
   const py=P.height(R.s);pathY=pathY===null||!Number.isFinite(pathY)?py:pathY+(py-pathY)*k;
   R.eye+=((R.duck?.78:1.62)-R.eye)*(1-Math.exp(-22*dt));
-  camera.position.set(f.x+R.u*f.rx,pathY+R.eye+R.y,f.z+R.u*f.rz);
-  look.set(a.x+R.u*.5*a.rx,P.height(R.s+22)+1.45+R.y*.35,a.z+R.u*.5*a.rz);camera.lookAt(look);
+  if(behind()){
+    // behind and above the runner, high enough that it never hides the middle lane ahead
+    // third person: Temple Run's chase camera, close, centred and raised above the head, angled down past the runner
+    // so you read the path over it. It trails a lane change a little and dips when you duck so the roll stays in frame.
+    camDuck+=((R.duck?1:0)-camDuck)*(1-Math.exp(-10*dt));   // ducking, the camera dips and eases back so the roll stays in frame
+    const back=2.4+.5*camDuck,cb=P.at(R.s-back,CB),ca=P.at(R.s+8,CA),ch=P.height(R.s-back);
+    camY=camY===null||!Number.isFinite(camY)?ch:camY+(ch-camY)*k;
+    camU=camU===null?R.u:camU+(R.u-camU)*(1-Math.exp(-9*dt));
+    camera.position.set(cb.x+camU*cb.rx,Math.max(camY,pathY)+2.6-.45*camDuck+R.y*.5,cb.z+camU*cb.rz);
+    look.set(ca.x+R.u*ca.rx,P.height(R.s+8)+.1-.3*camDuck+R.y*.3,ca.z+R.u*ca.rz);camera.lookAt(look);
+    runner.update(f,py,R,R.u-(R.branch?R.u:R.lane*LANE),paused||state==='title'?0:dt*slow);
+    chest.copy(runner.root.position).y+=1.2;world.flyTo=chest;}
+  else{camera.position.set(f.x+R.u*f.rx,pathY+R.eye+R.y,f.z+R.u*f.rz);
+    look.set(a.x+R.u*.5*a.rx,P.height(R.s+22)+1.45+R.y*.35,a.z+R.u*.5*a.rz);camera.lookAt(look);world.flyTo=null;}
+  runner.show(behind());
   R.roll+=((R.u-(R.branch?R.u:R.lane*LANE))*.02-R.roll)*k;
   if(!ptr||state==='run'){yaw*=1-k*.5;pitch*=1-k*.5;}
   shake=Math.max(0,shake-dt*2.5);
@@ -304,10 +331,13 @@ function frame(now){
   world.update(R.s,camera.position);sky.position.copy(camera.position);
   // the region sets the fog, sky, hills and light shafts
   const w=regionAt(R.s).w,mu=mat.uniforms,su=sky.material.uniforms;
-  mu.uTime.value=t;mu.uFogDist.value=S.fog*mix6(w,'fogK');mix6(w,'fog',mu.uFogInk.value);
+  // Spider-Verse timing: the scenery (sway, pickups, water, motes) steps at 12 fps and nods on the music's beat,
+  // while the camera, obstacles and your own moves stay smooth. Calm mode keeps everything smooth and still.
+  const twos=S.twos&&!SET.calm,tt=twos?Math.floor(t*12)/12:t,bp=SET.calm||!S.beat?null:audio.beat();
+  mu.uTime.value=tt;mu.uBeat.value=bp==null?0:Math.exp(-(twos?Math.floor(bp*8)/8:bp)*6);mu.uFogDist.value=S.fog*mix6(w,'fogK');mix6(w,'fog',mu.uFogInk.value);
   mix6(w,'far',mu.uFarInk.value);mix6(w,'near',mu.uNearInk.value);mix6(w,'ringFog',mu.uRingFog.value);mu.uSnowLine.value=mix6(w,'snow');mu.uStrata.value=mix6(w,'strata');
   su.uFogInk.value.copy(mu.uFogInk.value);mix6(w,'sky',su.uSkyTop.value);su.uNight.value=mix6(w,'night');su.uKasumi.value=mix6(w,'kasumi');
-  air.update(t,camera,w,print.rt.height/(2*Math.tan(camera.fov*Math.PI/360)));
+  air.update(tt,camera,w,print.rt.height/(2*Math.tan(camera.fov*Math.PI/360)));
   sunP.copy(mu.uSun.value).multiplyScalar(1000).add(camera.position).project(camera);
   const onScreen=sunP.z<1?1-Math.min(1,Math.max(0,(Math.max(Math.abs(sunP.x),Math.abs(sunP.y))-1)/.6)):0;
   print.u.uSunUV.value.set(sunP.x*.5+.5,sunP.y*.5+.5);print.u.uShaft.value=S.shafts*mix6(w,'shaft')*onScreen;
@@ -316,7 +346,11 @@ function frame(now){
   proofT=Math.max(0,proofT-dt);
   const sp=state==='run'?R.v:0,m=proofT>0||focusT>0?0:(S.mis+sp*S.speedMis)*(SET.calm?.3:1)*(SET.cvd?.4:1),u=print.u,tick=Math.floor(t*12),j=S.reprint?(i=>(Math.sin(tick*12.9898+i*78.233)*43758.5453%1)*.35):()=>0;
   u.uMis0.value.set(-.85*m+j(1)*m,.55*m+j(2)*m);u.uMis1.value.set(.75*m+j(3)*m,-.4*m+j(4)*m);u.uMis2.value.set(.08*m,.04*m);
-  u.uSeed.value=S.reprint?(tick*.618034)%1:0;
+  u.uSeed.value=S.reprint?(tick*.618034)%1:0;u.uBoil.value=S.boil&&!SET.calm?(Math.floor(t*12)*.381966)%1:0;
+  // focus pulls to the next obstacle ahead (a quick rack, never a snap), so it prints in register
+  // (never closer than 14 m and racked gently: a fast pull swung the scenery at the screen's edges in and out of register)
+  {let z=60;if(S.pull&&state!=='title'){const nx=world.obs.between(R.s+14,R.s+140).sort((a,b)=>a.s-b.s)[0];if(nx)z=nx.s-R.s;}
+    focusZ+=(z-focusZ)*(1-Math.exp(-2.5*dt));u.uFocusZ.value=S.pull?focusZ:-1;}
   u.uGrain.value=S.grain;u.uGrainAmt.value=S.grainAmt;u.uInkAmt.value=S.ink;u.uSoft.value=S.soft;u.uDepthDrift.value=focusT>0?0:S.drift;u.uOutline.value=S.outline;u.uThick.value=S.thick;
   u.uWobble.value=S.wobble;u.uDefects.value=S.defects;u.uDots.value=S.dots;u.uTone.value=S.tone;u.uHatch.value=S.hatch;u.uDeckle.value=S.deckle;u.uHalo.value=S.halo;
   applyInks();
@@ -336,7 +370,7 @@ function frame(now){
   fpsN++;fpsT+=dt;if(fpsT>.5){fpsEl.textContent=Math.round(fpsN/fpsT)+' fps';fpsN=0;fpsT=0;distEl.textContent=runNo+' · BEST '+pad(best);}
   if(!TRAILER)requestAnimationFrame(frame);
 }
-window.RR={S,R,print,world,camera,scene,air,route,applyInks,applySun,begin,jump,duck,lane,focus,events,fill:()=>{meter=1;},get ink(){return ink;},get meter(){return meter;},get focusT(){return focusT;},
+window.RR={S,R,print,world,camera,scene,air,route,runner,applyInks,applySun,begin,jump,duck,lane,focus,events,fill:()=>{meter=1;},get ink(){return ink;},get meter(){return meter;},get focusT(){return focusT;},
   tick:dt=>{world.update(R.s,camera.position);if(state==='run')step(dt);},get state(){return state;},get paused(){return paused;},
   // for the trailer: draw one frame at time now (ms); start a shot in a region (every leg that region unless forks), at s, in a lane
   frame,get postcard(){return card_pc;},resize,

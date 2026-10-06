@@ -15,9 +15,10 @@ export const LEG=1500,BLEND=400,FORK_LEN=70;
 export const forkAt=k=>k*LEG+LEG-BLEND-300;          // the island's tip, 300 m before the next region starts blending in
 const AHEAD=340,BEHIND=50;
 export const START=60;
-// Speed climbs from 9 m/s toward 25 and keeps creeping up; difficulty keeps rising for ~9 km.
-export const speedAt=s=>9+16*(1-Math.exp(-Math.max(0,s-START)/4200));
-const diffAt=s=>Math.min(2.5,Math.max(0,(s-200)/3500));
+// Speed climbs from 11 m/s toward 25 and keeps creeping up; difficulty keeps rising for ~6 km.
+// (Playtest 2026-10-05: the old 9 m/s start only got interesting around 5 km. Now that's ~2.5 km.)
+export const speedAt=s=>11+14*(1-Math.exp(-Math.max(0,s-START)/3000));
+const diffAt=s=>Math.min(2.5,Math.max(0,(s-120)/2200));
 
 // ---------- noise ----------
 function hash2(x,y,s){let h=(Math.imul(x|0,374761393)+Math.imul(y|0,668265263)+Math.imul(s|0,982451653))|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296;}
@@ -137,7 +138,11 @@ export const FINDS=[{one:'acorn',many:'acorns'},{one:'maple leaf',many:'maple le
   {one:'turquoise stone',many:'turquoise stones'},{one:'snowflake',many:'snowflakes'},{one:'firefly',many:'fireflies'}];
 export function findKind(d){const w=regionAt(d.s).w;let x=d.seed,r=0;for(;r<5;r++)if((x-=w[r])<0)break;return r;}
 // A tumbleweed's lane at the moment you reach it, and where it is when you're d metres away.
-export const tumbleLane=o=>(Math.floor(o.seed3*3)-1)*LANE;
+// It waits off the path level with your lane, then locks on as it starts to roll in (~29 m out: over a
+// second's warning even at top speed), so every one needs an answer, jump or dodge, from the very first.
+// (Playtest 2026-10-05: on a random lane two in three could be ignored, until suddenly they couldn't.)
+export const TUMBLE_LOCK=29;
+export const tumbleLane=o=>o.aim??(Math.floor(o.seed3*3)-1)*LANE;
 const tumbleU=(o,d)=>tumbleLane(o)+((o.seed3*97)%1<.5?-1:1)*Math.max(-11,Math.min(11,d*.38));
 // A falling tree's tilt (0 standing … 1 down) when you're d metres away: it falls between 36 and 19 m.
 const fallT=d=>smooth(36,19,d);
@@ -309,7 +314,7 @@ export class World{
     this.og={log:[fLog,fLog,logGeo(ID.MOSS,ID.FROND),ledgeGeo(),fLog,fLog],branch:[fBranch,fBranch,branchGeo(ID.MOSS,ID.FROND,true),archGeo(),fBranch,fBranch],
       rock:[fRock,fRock,boulderGeo(ID.MOSS),boulderGeo(ID.STRATA),fRock,fRock],saguaro:saguaroGeo(),fall:fallGeo(),tumble:tumbleGeo(),
       gap:[bridgeGeo(ID.TRUNK),bridgeGeo(ID.TRUNK),bridgeGeo(ID.MOSS),cairnGeo(),bridgeGeo(ID.TRUNK),bridgeGeo(ID.TRUNK)],sign:signPostGeo()};
-    this.findGeo=[acornGeo(),mapleGeo(),mangoGeo(),stoneGeo(),flakeGeo(),fireflyGeo()];this.collected=new Set();this.flying=[];
+    this.findGeo=[acornGeo(),mapleGeo(),mangoGeo(),stoneGeo(),flakeGeo(),fireflyGeo()];this.collected=new Set();this.flying=[];this.aimLane=0;
     this.rings=new THREE.Group();this.ringBio=null;
     this.far=new THREE.Mesh(ringGeo(1500,ID.MOUNTAIN),mat);this.near=new THREE.Mesh(ringGeo(900,ID.RIDGE),mat);
     const sample=f=>Float32Array.from({length:N_RING+1},(_,i)=>f(i/N_RING*Math.PI*2));
@@ -338,15 +343,20 @@ export class World{
         p.needsUpdate=uv.needsUpdate=true;}}
     // drops flying to the runner during focus
     {const fm=new THREE.Matrix4(),q=new THREE.Quaternion(),sc=new THREE.Vector3(),p=new THREE.Vector3();
-      for(const f of this.flying){f.t+=1/60/f.dur;p.copy(f.from).lerp(cam,Math.min(1,f.t*f.t));fm.compose(p,q,sc.setScalar(Math.max(.05,1-f.t*.7)));
+      for(const f of this.flying){f.t+=1/60/f.dur;p.copy(f.from).lerp(this.flyTo||cam,Math.min(1,f.t*f.t));   // flyTo: the runner, seen from behind
+       fm.compose(p,q,sc.setScalar(Math.max(.05,1-f.t*.7)));
         f.im.setMatrixAt(f.i,f.t>=1?ZERO:fm);f.im.instanceMatrix.needsUpdate=true;}
       this.flying=this.flying.filter(f=>f.t<1);}
     // moving obstacles: falling trees and tumbleweeds, posed by the runner's distance to them
     const m=new THREE.Matrix4(),rz=new THREE.Matrix4(),F={};
     for(const c of this.chunks.values())for(const d of c.userData.dyn){const o=d.o,dist=o.s+o.len/2-s;
       if(d.kind==='fall'){const tl=fallT(dist)*(Math.PI/2-.05);d.mesh.matrix.copy(d.base).multiply(rz.makeRotationZ(d.side*tl));}
-      else{const u=tumbleU(o,dist),f=this.path.at(o.s+o.len/2,F),roll=-(u-tumbleLane(o))/.62,hop=.62+.25*Math.abs(Math.sin(roll*.5));
-        d.mesh.matrix.copy(d.base).setPosition(f.x+u*f.rx,this.path.height(o.s)+.06+hop,f.z+u*f.rz).multiply(rz.makeRotationZ(roll));}}
+      else{if(dist>TUMBLE_LOCK+8)o.aim=undefined;   // (a new run starting behind it)
+        if(o.aim===undefined){if(dist<TUMBLE_LOCK)o.aim=this.aimLane;else o.wait=this.aimLane;}   // track your lane, then commit
+        const u=tumbleU(o.aim===undefined?{...o,aim:o.wait}:o,dist),f=this.path.at(o.s+o.len/2,F),roll=-(u-tumbleLane(o))/.62,hop=.62+.25*Math.abs(Math.sin(roll*.5));
+        d.mesh.matrix.copy(d.base).setPosition(f.x+u*f.rx,this.path.height(o.s)+.06+hop,f.z+u*f.rz).multiply(rz.makeRotationZ(roll));
+        // its shadow rolls with it, once it's on the path
+        if(d.shadow){const on=Math.abs(u)<PATH_HW+.6;d.shadow.matrix.makeTranslation(on?u*f.rx:0,0,on?u*f.rz:0);if(!on)d.shadow.matrix.scale(new THREE.Vector3(0,0,0));}}}
   }
   // what the runner (at s, u, feet y above the path, ducking or not) is hitting, if anything
   // What the runner (at s, u, feet y above the path, ducking or not) is hitting, if anything. Any hit ends the run.
@@ -462,7 +472,12 @@ export class World{
       for(const o of this.obs.between(s0,s0+CHUNK)){if(o.kind==='gap')continue;const{r,kind}=this.obs.variant(o),sc=o.s+o.len/2;
         if(kind==='rock1'||kind==='rock2'){for(let l=0;l<3;l++)if(o.mask[l]){const u=(l-1)*LANE,geo=r===3&&(o.seed*7+l)%1<.5?this.og.saguaro:this.og.rock[r];place(dress(geo,r),sc,u);shadow(o,u-1.15,u+1.15);}}
         else if(kind==='fall'){const sd=o.seed3<.5?-1:1,m=place(dress(this.og.fall,r),sc,sd*4.7,.4);g.userData.dyn.push({o,kind,mesh:m,base:m.matrix.clone(),side:sd});shadow(o,-PATH_HW-.2,PATH_HW+.2);}
-        else if(kind==='tumble'){const m=place(dress(this.og.tumble,r),sc,0);g.userData.dyn.push({o,kind,mesh:m,base:m.matrix.clone()});const u=tumbleLane(o);shadow(o,u-1.1,u+1.1,.4);}
+        else if(kind==='tumble'){const m=place(dress(this.og.tumble,r),sc,0);
+          // its own shadow mesh (centred on the path; update() slides it under the ball)
+          const n0=sp.length;shadow(o,-1.1,1.1,.4);
+          const tp=sp.splice(n0),k=tp.length/3,tuv=suv.splice(suv.length-k*2),tb=sbio.splice(sbio.length-k*3),tb2=sbio2.splice(sbio2.length-k*3);
+          const sh=new THREE.Mesh(built(tp,tuv,tb,tb2,ID.SHADOW,new Array(k*3).fill(0).map((_,i)=>i%3===1?1:0)),this.mat);sh.matrixAutoUpdate=false;sh.userData.own=true;g.add(sh);
+          g.userData.dyn.push({o,kind,mesh:m,base:m.matrix.clone(),shadow:sh});}
         else{place(dress(kind==='log'?this.og.log[r]:this.og.branch[r],r),sc,0);shadow(o,-PATH_HW-.2,PATH_HW+.2);}}
       // the signpost at a fork's tip
       {const fk=P.fork(s0+CHUNK/2)||P.fork(s0)||P.fork(s0+CHUNK);if(fk&&fk.fs>=s0&&fk.fs<s0+CHUNK){const r=regionAt(fk.fs).r;place(dress(this.og.sign,r),fk.fs,0,.06);

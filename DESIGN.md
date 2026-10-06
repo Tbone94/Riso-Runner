@@ -23,6 +23,8 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
   | Snow | Aqua / Medium Blue / Federal Blue | icy stretches: changing lanes is slow and slippery |
   | Night | Yellow / Violet / Federal Blue | darkness: you see a much shorter way ahead |
   Moving hazards are posed by your distance to them, not the clock, so the warning is the same at any speed.
+  Tumbleweeds wait off the path level with your lane and lock on as they roll in (29 m out), so every one needs an
+  answer, jump or dodge (playtest 2026-10-05: on a random lane two in three could be ignored until late in a run).
 - **Forks (M2, built 2026-10-03):** 300 m before each region starts blending out, the path splits round an
   island with a signpost. Be in the left or right lane to take that branch; the branch picks the next region
   (both options and their twists show on a banner and the signboards). The middle lane hits the signpost.
@@ -69,16 +71,29 @@ The vibe comes first. If it doesn't feel like being inside a print, nothing else
 - **Installable app**: manifest, riso-printed icons, full screen, an offline service worker (skipped on
   localhost unless `?sw`), an Install button where the browser offers one, and an Add to Home Screen hint on iOS.
 - No shop or currency in v1.
+- **Third or first person (2026-10-05; Settings → View, third person by default, the user likes both):** third person is
+  a Temple Run chase camera, centred 2.4 m behind and 2.6 m up, looking down at the path 8 m ahead with a lens 10° tighter,
+  so the whole runner sits in the lower middle and you read obstacles over its head. It trails lane changes a little and
+  dips when you duck so the roll stays in frame. (An over-the-shoulder camera was tried and dropped for this.) The runner: a mannequin
+  after Superhot, printed in flat facets (the shader takes facet normals from screen derivatives), the body in the
+  region's mid ink and its joints in key ink, with the obstacles' outline and paper edge. The model and its motion are
+  Quaternius' Universal Animation Library (CC0; models/runner.glb, trimmed to seven clips by tools/trim-glb.mjs):
+  Sprint_Loop sped up with you, Jump_Start → Jump_Loop → Jump_Land, Roll to duck, Idle on the title. The first,
+  hand-posed mannequin looked stiff and now only stands in while the model loads. A lean into lane changes; on a crash
+  the posed body shatters into facet shards (falling into a gap, it just falls). UAL2's Slide clips are on a different
+  skeleton (Unreal names, not Rigify) and would need retargeting. Pickups fly to the runner. First person is unchanged.
 
 ## Pitched, not decided
 Downhill momentum and launches, speed as health, drawing ink bridges at speed (the Riso Rider link),
 plate shift (run through obstacles of one ink), set pieces (paper glider, rope zipline, the roller ride).
 
 ## The run (M1, built 2026-10-03)
-- 3 lanes 2.2 m apart with a quick glide; jump (apex ~1.5 m, ~0.7 s); duck lasts only while the button
-  is held (user, 2026-10-03); down in the air drops you fast and you land ducking if still held. Jumps
+- 3 lanes 2.2 m apart with a quick glide; jump (apex ~1.5 m, ~0.7 s); duck lasts while the button is held
+  (user, 2026-10-03), but at most 0.9 s on the ground, then you stand and must press again (playtest 2026-10-05:
+  "I can't hold W and fly, so why can S let me slide forever"); down in the air drops you fast and you land ducking if still held. Jumps
   buffer ~0.15 s. Keys: arrows/WASD/space; phones: swipe (hold after swiping down), tap = jump.
-- Speed 9 → ~25 m/s, still creeping up after 10 km. Difficulty keeps rising to ~9 km: tighter spacing (never
+- Speed 11 → ~25 m/s, still creeping up after 10 km. Difficulty keeps rising to ~6 km (playtest 2026-10-05: the old
+  9 m/s start only got interesting around 5 km; that point now comes at ~2.5 km): tighter spacing (never
   under ~1.15 s), and combos unlock: dodge-then-jump/duck, jump-then-dodge, zigzag rocks, leap-then-duck. Obstacles are one endless seeded sequence (same every run):
   log (jump), branch (slide), rock1 / rock2 (change lane; rock2 always leaves one lane open), gap (jump),
   and later a rock2 followed by a log or branch through the open lane. Spacing is never under ~1.2 s.
@@ -132,6 +147,14 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
    - The key plate's hatching is lighter (.3): at full strength it striped whole night scenes.
    - The roller tracks run near the sheet's edges, where real feed rollers grip, never through the lanes.
    - Jungle boulders and logs carry moss in patches on top. The trunk's moss bands made them read as boardwalk.
+   - More ink (ink 1.02, defects .4, the tone curve keeps light tints): a playtester said every drum looked short of ink.
+10. **Spider-Verse, phase 1** (2026-10-05, from Imageworks' own accounts of the films; lab toggles for each):
+   - **Focus on the threat:** misregistration is the depth of field, and focus racks to the next obstacle, so it
+     prints in register while nearer and farther plates drift apart. Nothing ever blurs.
+   - **The far scenery simplifies** (Gwen's world): past ~60 m grain and hatching give way to flat washes.
+   - **Scenery on twos, a beat nod and boiling lines** are built but off (lab only): in play they read as glitching
+     and bouncing at the screen's edges (user, 2026-10-05). The focus pull stays, racked gently and never closer
+     than 14 m, with only a slight drift on the near side.
 
 ## Milestones
 - **M0 Look lab:** the rolling path through all three regions, the full print pass, a slow run, sliders. The vibe test.

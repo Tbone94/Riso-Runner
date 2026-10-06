@@ -8,7 +8,7 @@
 // Every shot is real play: the game runs at 60 steps a second, an autopilot reads the obstacles ahead and
 // jumps, ducks and changes lane. The trailer adds captions, the end card, the sound mix and the encoder.
 import * as audio from '../src/audio.js';
-import {LANE,START,forkAt,speedAt,tumbleLane,REGION_INFO} from '../src/world.js';
+import {LANE,START,forkAt,speedAt,REGION_INFO} from '../src/world.js';
 
 const RR=window.RR,FW=1920,FH=1080,FPS=60,DT=1/FPS,BAR=2;   // the music is 120 bpm: a bar every 2 s
 const UPLOAD='http://127.0.0.1:5198/upload',MUSIC='music/jungle.m4a';
@@ -38,24 +38,27 @@ for(const k in audio.sfx)audio.sfx[k]=(...a)=>{if(!PRE)LOG.push({t:T,name:k,args
 const MARKS=[],HITS=[];   // {t, what}: moments the music reacts to (focus, crash)
 
 // ---------- the autopilot ----------
-// Reads the obstacles ahead: rocks and tumbleweeds block lanes (pick the lane that stays clear longest, or the one
-// with pickups); logs, falling trees and gaps are jumped so the arc peaks over them; branches are ducked under.
+// Reads the obstacles ahead: rocks block lanes (pick the lane that stays clear longest, or the one with pickups);
+// logs, falling trees, tumbleweeds (they aim at your lane) and gaps are jumped so the arc peaks over them;
+// branches are ducked under.
 const JV=8.8,G=26;
 function pilot(o={}){const R=RR.R,W=RR.world,s=R.s,v=Math.max(R.v,4);
   // forks: be in the chosen side lane well before the island
   const k=Math.floor((s-forkAt(0)+260)/1500),fs=forkAt(k);
-  if(k>=0&&s>fs-240&&s<fs+75){steer(o.side||1);RR.duck(false);return;}
+  const inFork=k>=0&&s>fs-240&&s<fs+75;
+  if(inFork&&s>fs-45){steer(o.side||1);RR.duck(false);return;}   // the fork's clear zone: just take the branch
   const look=v*1.6+6,ahead=W.obs.between(s-3,s+look).filter(b=>b.s+b.len+.15>s).sort((a,b)=>a.s-b.s);
   const first=[1e9,1e9,1e9];let jumpO=null,duckO=null;
   for(const b of ahead){const kind=b.kind==='gap'?'gap':W.obs.variant(b).kind,d=b.s-s;
     if(kind==='rock1'||kind==='rock2'){for(let l=0;l<3;l++)if(b.mask[l])first[l]=Math.min(first[l],d);}
-    else if(kind==='tumble'){const l=Math.round(tumbleLane(b)/LANE)+1;first[l]=Math.min(first[l],d);}
     else if(kind==='branch'){if(!duckO)duckO=b;}
     else if(!jumpO)jumpO=b;}
   if(o.crash){steer(o.crashLane??R.lane);}
   else{const cur=R.lane+1;let best=cur;
     if(first[cur]<1e9){for(let l=0;l<3;l++)if(first[l]>first[best]+.01||(first[l]===first[best]&&Math.abs(l-cur)<Math.abs(best-cur)))best=l;}
+    else if(inFork){const sl=(o.side||1)+1;if(first[sl]>=1e9)best=sl;}   // head for the branch while still dodging
     else if(o.gather){let most=-1;for(let l=0;l<3;l++)if(first[l]>=1e9){const n=drops(s,l-1);if(n>most+.5||(n===most&&l===cur)){most=n;best=l;}}}
+    if(Math.abs(best-cur)===2&&first[1]<v*.4+2.5&&first[cur]>first[1])best=cur;   // don't cut through a lane about to be blocked
     steer(best-1);}
   if(jumpO){const c=jumpO.s+jumpO.len/2;if(!R.air&&c-s<=v*JV/G+.4&&c-s>0)RR.jump();}
   const ducking=duckO&&duckO.s-s<v*.22+1.4&&s<duckO.s+duckO.len+.5&&!(jumpO&&jumpO.s<duckO.s&&jumpO.s+jumpO.len>s-1);
@@ -285,7 +288,7 @@ function banner(){const W=1920,H=690,c=document.createElement('canvas');c.width=
   x.font=`400 42px ${MONO}`;x.letterSpacing='0px';x.fillText('run as far as you can · free · phone or desktop',0,112);x.restore();
   return c;}
 
-window.trailer={kit,HITS,run,contactSheet,frames,renderMP4,preview,renderAudio,SHOTS,LOG,MARKS,TOTAL};
+window.trailer={kit,HITS,run,contactSheet,frames,renderMP4,preview,renderAudio,SHOTS,LOG,MARKS,TOTAL,pilot};
 await document.fonts.load(`900 40px "Big Shoulders Stencil Display"`);await document.fonts.load(`20px "Cutive Mono"`);
 $('#tPrev').onclick=preview;$('#tSheet').onclick=()=>contactSheet();$('#tRender').onclick=renderMP4;
 status(`ready · ${TOTAL}s · ${SHOTS.length} shots`);

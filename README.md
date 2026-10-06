@@ -10,7 +10,8 @@ jump, hold ↓ duck, F focus, P pause, M sound, L the look lab. Phones: swipe, t
 - `DESIGN.md` — what the game is and why.
 - `src/` — `main.js` (game), `world.js` (path, regions, obstacles, plants), `print.js` (the riso print
   pass), `air.js` (particles), `audio.js` (procedural sound), `postcard.js` (the end-of-run postcard).
-- `lib/` — three.js r180 (MIT).
+- `lib/` — three.js r180 (MIT), with its GLTFLoader and BufferGeometryUtils.
+- `models/runner.glb` — the runner: mannequin and animations from Quaternius' Universal Animation Library (CC0, see `models/LICENSE-quaternius.txt`), trimmed by `tools/trim-glb.mjs`.
 - `tools/itch-build.sh` — zip for itch.io (`promo/itch/`).
 
 Installable as an app (manifest + offline service worker); bests are kept in localStorage.

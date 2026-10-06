@@ -47,7 +47,7 @@ function playLoop(r){const p=loadLoop(r);if(!p)return;
     src.buffer=L.buf;src.loop=true;src.loopStart=L.m.pad;src.loopEnd=L.m.pad+L.m.loop;
     const live=voices.length>0;if(!live||!msync)sync0=t;const at=msync?(t-sync0)%L.m.loop:0;
     g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(1,t+(live?xf():1.5));src.connect(g);g.connect(mbus);src.start(t,L.m.pad+at);
-    const v={r,src,g,out:false};voices.push(v);src.onended=()=>voices.splice(voices.indexOf(v),1);});}
+    const v={r,src,g,out:false,t0:t,off:at};voices.push(v);src.onended=()=>voices.splice(voices.indexOf(v),1);});}
 // Called every frame: r = the region you're in, next = the one after it, level = 1 running, less on cards and pause.
 export function music(r,next,level=1,focus=false){
   if(!ctx||!man)return;const t=ctx.currentTime;
@@ -58,6 +58,10 @@ export function music(r,next,level=1,focus=false){
   loadLoop(next);
   for(const k in loops)if(+k!==r&&+k!==next&&!voices.some(v=>v.r===+k))delete loops[k];   // let go of loops we're done with
 }
+// Where the music is in its bar: the beat's phase (0 on the beat → 1), or null with no music playing.
+// Every loop is a whole number of beats long, so the phase holds across loop points.
+export function beat(){if(!ctx||!man)return null;const v=voices.find(v=>!v.out);const m=v&&man[NAMES[v.r]];if(!m||!m.bpm)return null;
+  const p=((ctx.currentTime-(ctx.outputLatency||0)-v.t0+v.off)%m.loop+m.loop)%m.loop;return(p*m.bpm/60)%1;}
 export const _debug=()=>({ctx,master,out,mbus,voices,loops,curR,man,sync0});   // for measuring from the console
 
 // The trailer's offline mix: play logged effects ({t, name, args}) into another context, each at its own time.

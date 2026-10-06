@@ -1,9 +1,9 @@
 // sw.js — offline play. Everything the game needs is cached on install; afterwards it's served from the
 // cache, and a new version (bump VERSION when shipping) installs in the background and takes over on the
 // next launch. Saved bests live in localStorage, so updates never clear them.
-const VERSION='riso-runner-6';
-const FILES=['./','index.html','manifest.webmanifest','riso.js','lib/three.module.min.js','lib/three.core.min.js',
-  'src/main.js','src/world.js','src/print.js','src/air.js','src/audio.js','src/postcard.js',
+const VERSION='riso-runner-7';
+const FILES=['./','index.html','manifest.webmanifest','riso.js','lib/three.module.min.js','lib/three.core.min.js','lib/GLTFLoader.js','lib/BufferGeometryUtils.js','models/runner.glb',
+  'src/main.js','src/world.js','src/print.js','src/air.js','src/audio.js','src/postcard.js','src/runner.js',
   'fonts/big-shoulders-stencil-display-latin.woff2','fonts/cutive-mono-latin.woff2',
   'music/music.json','music/forest.m4a','music/autumn.m4a','music/jungle.m4a','music/desert.m4a','music/snow.m4a','music/night.m4a',
   'icons/icon-192.png','icons/icon-512.png','icons/icon-maskable-512.png','icons/apple-touch-icon.png','icons/favicon-32.png'];
