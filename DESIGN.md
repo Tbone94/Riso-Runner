@@ -125,6 +125,13 @@ with an obstacle. Calm stretches after forks. Hard, never unfair.
    key plate prints as a wavering hand-cut line screen (hatching) instead of grain; the ink stops raggedly
    short of the image edge like a real plate; the air is alive (tumbling leaves, paper-white fluff and
    pollen, desert dust, a flock of birds).
+9. **Readable riso** (2026-10-05, after Reddit feedback that the game was hard to see and too grainy): imperfections
+   are big and soft, while anything small or fast stays crisp.
+   - The grain is **soft** (lab: "Grain softness", default .85). Each pixel shows the average of the few grains it
+     covers instead of one grain on or off, so tints keep an even shimmer and the TV-static look is gone.
+   - The key plate's hatching is lighter (.3): at full strength it striped whole night scenes.
+   - The roller tracks run near the sheet's edges, where real feed rollers grip, never through the lanes.
+   - Jungle boulders and logs carry moss in patches on top. The trunk's moss bands made them read as boardwalk.
 
 ## Milestones
 - **M0 Look lab:** the rolling path through all three regions, the full print pass, a slow run, sliders. The vibe test.

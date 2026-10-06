@@ -37,13 +37,13 @@ const RG=REGIONS.map(r=>REGION[r]),INK3N=RG.map(g=>g.inks.map(n=>hex3(INKS[n])))
 const INK3C=INK3N.map((s,r)=>r===2?['Yellow','Teal','Hunter Green'].map(n=>hex3(INKS[n])):s);
 let INK3=INK3N;
 const S={start:'Forest',preset:'By region',shafts:.7,paper:'Natural',fov:78,sun:-38,fog:150,god:false,
-  tone:.55,hatch:.45,deckle:1,halo:1,grain:1.2,grainAmt:.6,ink:.9,soft:.12,mis:1.4,speedMis:.1,drift:.6,outline:.85,thick:1,wobble:1.4,defects:.5,dots:0,scale:.75,reprint:false};
+  tone:.55,hatch:.3,deckle:1,halo:1,grain:1.2,grainAmt:.6,ink:.9,soft:.85,mis:1.4,speedMis:.1,drift:.6,outline:.85,thick:1,wobble:1.4,defects:.5,dots:0,scale:.75,reprint:false};
 const CONTROLS=[
   ['start','Start in',REGION_INFO.map(r=>r.name)],['god','Can\'t crash (for looking around)'],['preset','Inks',['By region',...Object.keys(PRESETS)]],['paper','Paper',Object.keys(PAPERS)],
   ['fov','Field of view',60,100,1],['sun','Sun direction',-180,180,1],['fog','Fog distance',60,320,5],['shafts','Light shafts',0,1.5,.05],
   '-',
   ['tone','Bold shapes',0,1,.05],['hatch','Key plate hatching',0,1,.05],['deckle','Rough print edge',0,1,.05],['halo','Paper edge round obstacles',0,1,.05],
-  ['ink','Ink density',.3,1.4,.05],['grainAmt','Grain strength',0,1,.05],['grain','Grain size (px)',.5,3,.05],['soft','Grain softness',.02,.5,.01],['mis','Misregistration (px)',0,6,.1],['speedMis','… extra per m/s',0,.4,.01],
+  ['ink','Ink density',.3,1.4,.05],['grainAmt','Grain strength',0,1,.05],['grain','Grain size (px)',.5,3,.05],['soft','Grain softness (0 = one grain a pixel)',0,1,.05],['mis','Misregistration (px)',0,6,.1],['speedMis','… extra per m/s',0,.4,.01],
   ['drift','Far plates drift',0,1,.05],['outline','Key outlines',0,1,.05],['thick','Outline weight',.5,3,.1],['wobble','Outline wobble',0,4,.1],
   ['defects','Press defects',0,1,.05],['dots','Halftone (mid plate)',0,1,.05],['scale','Render scale',.4,1,.05],
   ['reprint','Reprint at 12 fps'],

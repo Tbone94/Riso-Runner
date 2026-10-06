@@ -119,7 +119,12 @@ void main(){
   }else if(id==10){L=vec3(.12,.62,.28);S=vec3(0.,.72,.6);
   }else if(id==11){                               // mossy trunk climbed by pothos
     L=vec3(.06,.32,.55);S=vec3(0.,.38,.84);
-    float m=smoothstep(.5,.6,vnoise(vec2(vH*55.,atan(N.x,N.z)*1.6+vSeed*9.)));
+    #ifdef OBSTACLE
+      // on a boulder or log the trunk's bands read as the boardwalk's planks: moss sits in patches on top instead
+      float m=smoothstep(.5,.62,vnoise(vW.xz*1.4+vW.y*.8+vSeed*9.))*smoothstep(.15,.6,N.y);
+    #else
+      float m=smoothstep(.5,.6,vnoise(vec2(vH*55.,atan(N.x,N.z)*1.6+vSeed*9.)));
+    #endif
     L=mix(L,vec3(.32,.66,.08),m);S=mix(S,vec3(.1,.8,.4),m);
   }else if(id==12){                               // saguaro: light + key overprint to green, with ribs
     float rib=smoothstep(.35,.5,abs(fract(atan(N.z,N.x)*1.91)-.5));
@@ -286,14 +291,19 @@ vec3 plate(vec2 uv,vec2 fc,float dk,vec2 mis,int k,vec3 ink,float sh,float sky,f
   d=k==0?d+sh*.4:d*(1.-sh*.6);
   // press defects, fixed to the sheet: a starved patch on each drum, and the feed rollers' tire tracks
   float starve=smoothstep(.55,.85,vnoise(fc/uDpr/240.+float(k)*7.3));
-  float tx=vUv.x;float tire=(1.-smoothstep(.0025,.0045,abs(tx-.24)))+(1.-smoothstep(.0025,.0045,abs(tx-.76)));
+  // (the tracks run near the sheet's edges, where the rollers grip, never through the lanes)
+  float tx=vUv.x;float tire=(1.-smoothstep(.0025,.0045,abs(tx-.045)))+(1.-smoothstep(.0025,.0045,abs(tx-.955)));
   tire*=step(.55,fract(fc.y/uDpr/9.))*vnoise(vec2(tx*40.,fc.y/uDpr/120.));
   d*=uInkAmt*(1.-uDefects*.4*starve);
   if(k==2)d+=uDefects*.22*tire;
   // bold shapes: push densities toward clean paper and solid ink, leaving grain for the tints between
   d=mix(d,smoothstep(.1,.86,d),max(uTone,.85*ob));
-  // grain strength: 0 prints a flat tint, 1 is pure stochastic grain (Grain Touch)
-  float cov=mix(clamp(d,0.,1.),clamp((d-grain(fc,float(k)))/uSoft+.5,0.,1.),uGrainAmt*(1.-.6*ob));
+  // grain strength: 0 prints a flat tint, 1 is full stochastic grain (Grain Touch).
+  // Softness: 0 prints every pixel as one grain, on or off (TV static at screen size); 1 shows each pixel as the
+  // average of the few grains it covers, so tints keep an even shimmer and solids and bare paper stay clean.
+  float g=grain(fc,float(k)),dc=clamp(d,0.,1.);
+  float gc=mix(clamp((d-g)/.1+.5,0.,1.),clamp(dc+(g-.5)*2.*sqrt(dc*(1.-dc)),0.,1.),uSoft);
+  float cov=mix(dc,gc,uGrainAmt*(1.-.6*ob));
   if(k==1)cov=mix(cov,dots(fc,d,.26),uDots);
   if(k==2)cov=mix(cov,hatch(fc,clamp(d,0.,1.)),uHatch*(1.-sky)*(1.-ob));
   return mix(vec3(1.),ink,cov*edge);
@@ -325,7 +335,7 @@ export class PrintPass{
       uRes:V(new THREE.Vector2(4,4)),uDensRes:V(new THREE.Vector2(4,4)),uSunUV:V(new THREE.Vector2(.5,.8)),
       uMis0:V(new THREE.Vector2()),uMis1:V(new THREE.Vector2()),uMis2:V(new THREE.Vector2()),
       uInk0:V(new THREE.Vector3(1,.9,0)),uInk1:V(new THREE.Vector3(1,.3,.7)),uInk2:V(new THREE.Vector3(0,.4,.75)),uPaper:V(new THREE.Vector3(.95,.93,.89)),
-      uNear:V(.15),uFar:V(2600),uDepthDrift:V(.6),uGrain:V(1),uGrainAmt:V(.6),uInkAmt:V(1),uSoft:V(.1),uOutline:V(.85),uThick:V(1),uWobble:V(1.5),
+      uNear:V(.15),uFar:V(2600),uDepthDrift:V(.6),uGrain:V(1),uGrainAmt:V(.6),uInkAmt:V(1),uSoft:V(.85),uOutline:V(.85),uThick:V(1),uWobble:V(1.5),
       uDefects:V(.5),uDots:V(0),uSeed:V(0),uDpr:V(1),uShaft:V(0),uTone:V(.55),uHatch:V(.6),uDeckle:V(1),uHalo:V(1),uCvd:V(0)};
     this.quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({uniforms:this.u,depthTest:false,depthWrite:false,
       vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,fragmentShader:POST_FRAG}));
